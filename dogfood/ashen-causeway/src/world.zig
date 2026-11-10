@@ -80,6 +80,7 @@ pub fn visible(room: u8, a: Vec, b: Vec) bool {
     return true;
 }
 pub const Kind = enum { drifter, pike, censer, hound, warden };
+pub const Attack = enum { melee, ring };
 pub const Stage = enum { approach, windup, active, recovery, stagger, transition };
 pub const Enemy = struct {
     kind: Kind = .drifter,
@@ -91,6 +92,8 @@ pub const Enemy = struct {
     hit: bool = false,
     phase: u8 = 1,
     stagger_guard: u8 = 0,
+    attack: Attack = .melee,
+    sequence: u16 = 0,
     pub fn reach(e: Enemy) f32 {
         return switch (e.kind) {
             .drifter => 32,
@@ -100,7 +103,18 @@ pub const Enemy = struct {
             .warden => 76,
         };
     }
+    pub fn containsAttack(e: Enemy, target: Vec) bool {
+        const d = target.sub(e.pos);
+        if (d.length() > e.reach()) return false;
+        if (d.length() < 8) return true;
+        if (e.kind == .pike or e.kind == .hound) {
+            const lateral = @abs(d.x * e.aim.y - d.y * e.aim.x);
+            return d.dot(e.aim) >= 0 and lateral <= (if (e.kind == .pike) @as(f32, 10) else 14);
+        }
+        return d.unit().dot(e.aim) > 0.45;
+    }
     pub fn windup(e: Enemy) u16 {
+        if (e.attack == .ring) return 72;
         return switch (e.kind) {
             .drifter => 42,
             .pike => 48,
@@ -110,11 +124,22 @@ pub const Enemy = struct {
         };
     }
     pub fn recovery(e: Enemy) u16 {
+        if (e.attack == .ring) return 84;
         return switch (e.kind) {
             .hound => 72,
             .warden => 64,
             else => 48,
         };
+    }
+};
+pub const Shot = struct { pos: Vec = .{}, velocity: Vec = .{}, life: u16 = 0 };
+pub const Ring = struct {
+    center: Vec = .{},
+    age: u16 = 0,
+    alive: bool = false,
+    hit: bool = false,
+    pub fn radius(r: Ring) f32 {
+        return 20 + @as(f32, @floatFromInt(r.age)) * 3;
     }
 };
 pub const Drop = struct { room: u8 = 0, pos: Vec = .{}, amount: u32 = 0 };
@@ -137,6 +162,10 @@ pub const World = struct {
     charm: bool = false,
     completed: bool = false,
     enemies: [32]Enemy = [_]Enemy{.{}} ** 32,
+    shots: [32]Shot = [_]Shot{.{}} ** 32,
+    rings: [4]Ring = [_]Ring{.{}} ** 4,
+    hit_feedback: u8 = 0,
+    hurt_feedback: u8 = 0,
     message: []const u8 = "Find the lantern. Carry the coal to the beacon.",
     pub fn init() World {
         var w = World{};
@@ -145,6 +174,8 @@ pub const World = struct {
     }
     pub fn spawn(w: *World) void {
         w.enemies = [_]Enemy{.{}} ** 32;
+        w.shots = [_]Shot{.{}} ** 32;
+        w.rings = [_]Ring{.{}} ** 4;
         const kinds = [_]Kind{ .drifter, .pike, .hound, .censer };
         const points = [_]Vec{ .{ .x = 340, .y = 150 }, .{ .x = 510, .y = 390 }, .{ .x = 650, .y = 300 }, .{ .x = 820, .y = 150 } };
         for (points, kinds, 0..) |p, k, i| w.enemies[i] = .{ .kind = k, .pos = p, .hp = if (k == .hound) 60 else 85 };
@@ -176,6 +207,8 @@ pub const World = struct {
     }
     pub fn tick(w: *World, cmd: Command) void {
         if (w.player.hp == 0) return;
+        if (w.hit_feedback > 0) w.hit_feedback -= 1;
+        if (w.hurt_feedback > 0) w.hurt_feedback -= 1;
         if (cmd.swap) _ = w.player.equip(if (w.player.weapon == .sabre) .spear else .sabre);
         if (w.player.action == .idle) {
             if (cmd.aim) |a| {
@@ -187,16 +220,23 @@ pub const World = struct {
         if (w.player.accepted and w.player.action == .dodge) w.dodge_dir = if (cmd.movement.length() > 0.1) cmd.movement.unit() else w.facing;
         if (w.player.action == .idle) w.pos = move(w.room, w.pos, cmd.movement.unit().scale(@min(1, cmd.movement.length()) * (if (w.charm) @as(f32, 1.5) else 1.7)), 7);
         if (w.player.action == .dodge) w.pos = move(w.room, w.pos, w.dodge_dir.scale(if (w.player.age < 15) @as(f32, 4) else 1), 7);
+        w.hazardsTick();
+        if (w.player.hp == 0) {
+            w.die();
+            return;
+        }
         for (&w.enemies, 0..) |*e, i| {
             if (e.hp == 0) continue;
             const d = e.pos.sub(w.pos);
             const t = combat.spec(w.player.weapon, w.player.action);
             if (e.stage != .transition and w.player.active() and d.length() <= @as(f32, @floatFromInt(t.reach)) + 9 and d.unit().dot(w.facing) > 0.55 and visible(w.room, w.pos, e.pos) and w.player.hitOnce(@intCast(i))) {
+                w.hit_feedback = 8;
                 e.hp -|= @as(u16, t.damage) + @as(u16, w.upgrade) * 6;
                 if (e.hp == 0) {
                     w.embers +|= if (e.kind == .warden) @as(u32, 200) else 25;
                     if (e.kind == .warden) {
                         w.boss_defeated = true;
+                        w.rings = [_]Ring{.{}} ** 4;
                         w.message = "The Bell Warden falls. Rekindle the beacon.";
                     }
                     continue;
@@ -204,7 +244,7 @@ pub const World = struct {
                 if (e.stagger_guard == 0) {
                     e.stage = .stagger;
                     e.age = 0;
-                    e.stagger_guard = 72;
+                    e.stagger_guard = 180;
                 }
                 e.pos = move(w.room, e.pos, w.facing.scale(8), 9);
             }
@@ -233,22 +273,28 @@ pub const World = struct {
                     e.age = 0;
                     e.aim = d.unit();
                     e.hit = false;
+                    e.attack = if (e.kind == .warden and e.phase == 2 and e.sequence % 2 == 0) .ring else .melee;
+                    e.sequence +%= 1;
                 } else if (e.kind != .censer) e.pos = move(w.room, e.pos, d.unit().scale(if (e.kind == .hound) @as(f32, 1.25) else 0.65), 9);
             },
             .windup => {
                 if (e.age >= e.windup()) {
                     e.stage = .active;
                     e.age = 0;
+                    if (e.kind == .censer) w.fire(e.pos.add(e.aim.scale(12)), e.aim.scale(2.5));
+                    if (e.attack == .ring) w.emitRing(e.pos);
                 }
             },
             .active => {
                 if (e.kind == .hound and e.age < 10) e.pos = move(w.room, e.pos, e.aim.scale(3), 9);
-                const target = w.pos.sub(e.pos);
-                if (!e.hit and target.length() <= e.reach() and target.unit().dot(e.aim) > 0.45 and visible(w.room, e.pos, w.pos)) {
+                if (e.kind != .censer and e.attack != .ring and !e.hit and e.containsAttack(w.pos) and visible(w.room, e.pos, w.pos)) {
                     e.hit = true;
-                    if (w.player.damage(if (e.kind == .warden) 32 else 18)) w.pos = move(w.room, w.pos, e.aim.scale(9), 7);
+                    if (w.player.damage(if (e.kind == .warden) 32 else 18)) {
+                        w.hurt_feedback = 12;
+                        w.pos = move(w.room, w.pos, e.aim.scale(9), 7);
+                    }
                 }
-                if (e.age >= 10) {
+                if (e.age >= (if (e.attack == .ring) @as(u16, 60) else 10)) {
                     e.stage = .recovery;
                     e.age = 0;
                 }
@@ -277,6 +323,55 @@ pub const World = struct {
             e.stage = .transition;
             e.age = 0;
             w.message = "The second bell tolls. The Warden quickens.";
+        }
+    }
+    fn fire(w: *World, pos: Vec, velocity: Vec) void {
+        for (&w.shots) |*shot| if (shot.life == 0) {
+            shot.* = .{ .pos = pos, .velocity = velocity, .life = 180 };
+            return;
+        };
+        // Capacity exhaustion drops this output; it never overwrites a live shot.
+    }
+    fn emitRing(w: *World, center: Vec) void {
+        for (&w.rings) |*ring| if (!ring.alive) {
+            ring.* = .{ .center = center, .alive = true };
+            return;
+        };
+    }
+    fn hazardsTick(w: *World) void {
+        for (&w.shots) |*shot| {
+            if (shot.life == 0) continue;
+            shot.life -= 1;
+            const steps: usize = @max(1, @as(usize, @intFromFloat(@ceil(shot.velocity.length()))));
+            const step = shot.velocity.scale(1 / @as(f32, @floatFromInt(steps)));
+            for (0..steps) |_| {
+                shot.pos = shot.pos.add(step);
+                if (blocked(w.room, shot.pos, 3)) {
+                    shot.life = 0;
+                    break;
+                }
+                if (shot.pos.sub(w.pos).length() <= 10) {
+                    shot.life = 0;
+                    if (w.player.damage(18)) {
+                        w.hurt_feedback = 12;
+                        w.pos = move(w.room, w.pos, shot.velocity.unit().scale(6), 7);
+                    }
+                    break;
+                }
+            }
+        }
+        for (&w.rings) |*ring| {
+            if (!ring.alive) continue;
+            const previous = ring.radius();
+            ring.age += 1;
+            const d = w.pos.sub(ring.center).length();
+            // Swept band includes the player's radius; dodge immunity consumes
+            // the crossing so the trailing edge cannot hit after a safe dodge.
+            if (!ring.hit and d >= previous - 13 and d <= ring.radius() + 13 and visible(w.room, ring.center, w.pos)) {
+                ring.hit = true;
+                if (w.player.damage(26)) w.hurt_feedback = 12;
+            }
+            if (ring.age >= 60) ring.alive = false;
         }
     }
     pub fn nearLantern(w: World) bool {
@@ -474,6 +569,117 @@ test "beacon victory requires boss defeat and its mooring bell" {
     w.tick(.{ .interact = true });
     try std.testing.expect(!w.completed);
     w.boss_defeated = true;
+    w.rings = [_]Ring{.{}} ** 4;
     w.tick(.{ .interact = true });
     try std.testing.expect(w.completed);
+}
+
+test "projectiles travel over time collide once and cannot tunnel through walls" {
+    var w = World.init();
+    w.enemies = [_]Enemy{.{}} ** 32;
+    w.pos = .{ .x = 150, .y = 350 };
+    w.fire(.{ .x = 100, .y = 350 }, .{ .x = 2.5 });
+    for (0..15) |_| w.hazardsTick();
+    try std.testing.expectEqual(@as(u8, 100), w.player.hp);
+    for (0..8) |_| w.hazardsTick();
+    try std.testing.expectEqual(@as(u8, 82), w.player.hp);
+    try std.testing.expectEqual(@as(u16, 0), w.shots[0].life);
+    for (0..60) |_| w.hazardsTick();
+    try std.testing.expectEqual(@as(u8, 82), w.player.hp);
+    w.player = .{};
+    w.pos = .{ .x = 280, .y = 200 };
+    w.fire(.{ .x = 200, .y = 200 }, .{ .x = 100 });
+    w.hazardsTick();
+    try std.testing.expectEqual(@as(u8, 100), w.player.hp);
+    try std.testing.expectEqual(@as(u16, 0), w.shots[0].life);
+}
+test "censer release locks its shot aim rather than applying instant beam damage" {
+    var w = World.init();
+    w.pos = .{ .x = 400, .y = 350 };
+    var e = Enemy{ .kind = .censer, .pos = .{ .x = 300, .y = 350 }, .hp = 85 };
+    w.enemyTick(&e);
+    try std.testing.expectEqual(Stage.windup, e.stage);
+    w.pos.y = 400;
+    for (0..70) |_| w.enemyTick(&e);
+    try std.testing.expectEqual(@as(u8, 100), w.player.hp);
+    try std.testing.expectEqual(@as(f32, 0), w.shots[0].velocity.y);
+    try std.testing.expectEqual(@as(f32, 2.5), w.shots[0].velocity.x);
+    try std.testing.expectEqual(@as(u16, 180), w.shots[0].life);
+}
+test "dodge consumes a projectile crossing and ring crossing without trailing damage" {
+    var w = World.init();
+    w.pos = .{ .x = 300, .y = 350 };
+    w.player.action = .dodge;
+    w.player.age = 5;
+    w.fire(.{ .x = 285, .y = 350 }, .{ .x = 20 });
+    w.hazardsTick();
+    try std.testing.expectEqual(@as(u8, 100), w.player.hp);
+    try std.testing.expectEqual(@as(u16, 0), w.shots[0].life);
+    w.rings[0] = .{ .center = .{ .x = 200, .y = 350 }, .age = 25, .alive = true };
+    w.hazardsTick();
+    try std.testing.expect(w.rings[0].hit);
+    w.player.action = .idle;
+    for (0..35) |_| w.hazardsTick();
+    try std.testing.expectEqual(@as(u8, 100), w.player.hp);
+    try std.testing.expect(!w.rings[0].alive);
+}
+test "phase two alternates shock and melee with anticipation and recovery" {
+    var w = World.init();
+    w.room = 2;
+    w.pos = .{ .x = 750, .y = 280 };
+    var e = Enemy{ .kind = .warden, .phase = 2, .hp = 240, .pos = .{ .x = 760, .y = 280 } };
+    w.enemyTick(&e);
+    try std.testing.expectEqual(Attack.ring, e.attack);
+    for (0..71) |_| w.enemyTick(&e);
+    try std.testing.expect(!w.rings[0].alive);
+    w.enemyTick(&e);
+    try std.testing.expect(w.rings[0].alive);
+    try std.testing.expectEqual(@as(u16, 0), w.rings[0].age);
+    for (0..60) |_| w.enemyTick(&e);
+    try std.testing.expectEqual(Stage.recovery, e.stage);
+    try std.testing.expectEqual(@as(u8, 100), w.player.hp);
+    for (0..84) |_| w.enemyTick(&e);
+    w.enemyTick(&e);
+    try std.testing.expectEqual(Attack.melee, e.attack);
+    try std.testing.expectEqual(Stage.windup, e.stage);
+}
+test "bounded hazards expire and checkpoints clear transient resources" {
+    var w = World.init();
+    for (0..40) |_| w.fire(.{ .x = 300, .y = 350 }, .{ .x = 1 });
+    var live: usize = 0;
+    for (w.shots) |s| {
+        if (s.life > 0) live += 1;
+    }
+    try std.testing.expectEqual(@as(usize, 32), live);
+    w.emitRing(.{ .x = 760, .y = 280 });
+    w.rest();
+    for (w.shots) |s| try std.testing.expectEqual(@as(u16, 0), s.life);
+    for (w.rings) |r| try std.testing.expect(!r.alive);
+}
+test "pike thrust rejects lateral targets while drifter cleave covers its fan" {
+    var e = Enemy{ .kind = .pike, .pos = .{ .x = 300, .y = 350 }, .aim = .{ .x = 1 }, .hp = 85 };
+    try std.testing.expect(e.containsAttack(.{ .x = 350, .y = 359 }));
+    try std.testing.expect(!e.containsAttack(.{ .x = 330, .y = 370 }));
+    e.kind = .drifter;
+    try std.testing.expect(e.containsAttack(.{ .x = 320, .y = 370 }));
+    try std.testing.expect(!e.containsAttack(.{ .x = 280, .y = 350 }));
+}
+
+test "repeated light hits cannot indefinitely postpone an enemy attack" {
+    var w = World.init();
+    w.room = 2;
+    w.pos = .{ .x = 740, .y = 280 };
+    w.enemies = [_]Enemy{.{}} ** 32;
+    w.enemies[0] = .{ .kind = .warden, .pos = .{ .x = 760, .y = 280 }, .hp = 6000 };
+    var saw_active = false;
+    for (0..170) |tick| {
+        // Replenishment is a fixture to stress interruption, not a play route.
+        w.player.stamina = 100;
+        w.player.hp = 100;
+        w.pos = .{ .x = 740, .y = 280 };
+        w.enemies[0].pos = .{ .x = 760, .y = 280 };
+        w.tick(.{ .aim = .{ .x = 1 }, .action = if (tick % 24 == 0) .light else null });
+        if (w.enemies[0].stage == .active) saw_active = true;
+    }
+    try std.testing.expect(saw_active);
 }
