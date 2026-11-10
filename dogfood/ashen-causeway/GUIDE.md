@@ -176,3 +176,14 @@ not timing measurements or physical gameplay recordings.
 The [dated integration assessment](ASSESSMENT-2026-11-10.md) links the proof,
 remaining work and prioritized framework observations. Its status remains under
 review while first-play pacing and final acceptance are unresolved.
+
+Optional pose/menu studies and real death/recovery captures use the same tests:
+
+```
+ASHEN_ROUTE_EVIDENCE=zig-out/evidence/routes ASHEN_POSE_EVIDENCE=zig-out/evidence/poses zig build test -j2
+```
+
+The route directory includes actual normal-input death, checkpoint respawn and
+currency recovery PNGs. Pose studies supplement this with isolated enemy
+windup/release/strike/recovery fixtures and menu fixtures; those arranged scenes
+are explicitly labeled and are not full gameplay routes. No fixtures ship.

@@ -727,6 +727,7 @@ test "corrupt save is retained until explicit new game and settings survive rese
         r.game.screen = screen;
         r.game.selected = 0;
         try r.draw(0);
+        try poseEvidence(r, @tagName(screen));
     }
 }
 
@@ -833,6 +834,7 @@ test "healing commitment and weapon startup have distinct player poses" {
     try r.draw(0);
     try std.testing.expect(startup != playerPoseDigest(r));
     try poseEvidence(r, "sabre-active");
+    try reviewEnemyPoses(r);
 }
 
 test "pause explains rejected upgrades in its visible footer" {
@@ -873,4 +875,42 @@ test "pause explains rejected upgrades in its visible footer" {
     };
     try std.testing.expect(message_pixels > 0);
     try poseEvidence(r, "upgrade-away");
+}
+
+// Optional isolated presentation fixtures, supplementary to full input routes.
+// Only test code calls this; no fixture mutation enters a shipping game.
+fn reviewEnemyPoses(r: anytype) !void {
+    const output = std.process.getEnvVarOwned(std.testing.allocator, "ASHEN_POSE_EVIDENCE") catch return;
+    std.testing.allocator.free(output);
+    for (std.enums.values(world.Kind)) |kind| {
+        r.game.state = world.World.init();
+        r.game.state.room = 2;
+        r.game.state.pos = .{ .x = 600, .y = 270 };
+        r.game.state.enemies = [_]world.Enemy{.{}} ** 32;
+        const index: usize = if (kind == .warden) 4 else 0;
+        r.game.state.enemies[index] = .{ .kind = kind, .pos = .{ .x = 660, .y = 270 }, .hp = if (kind == .warden) 480 else if (kind == .hound) 60 else 85, .stage = .windup };
+        r.game.state.boss_defeated = kind != .warden;
+        r.game.state.message = "Attack study - isolated presentation fixture.";
+        r.game.screen = .play;
+        r.game.follow();
+        var windup = false;
+        var release = false;
+        var strike = false;
+        var recovery = false;
+        for (0..100) |_| {
+            const enemy = r.game.state.enemies[index];
+            const label: ?[]const u8 = if (!windup and enemy.stage == .windup) "windup" else if (!release and enemy.stage == .active and enemy.age == 0) "release" else if (!strike and enemy.stage == .active and enemy.age == 5) "strike" else if (!recovery and enemy.stage == .recovery) "recovery" else null;
+            if (label) |phase| {
+                if (std.mem.eql(u8, phase, "windup")) windup = true;
+                if (std.mem.eql(u8, phase, "release")) release = true;
+                if (std.mem.eql(u8, phase, "strike")) strike = true;
+                if (std.mem.eql(u8, phase, "recovery")) recovery = true;
+                var name: [64]u8 = undefined;
+                try r.draw(0);
+                try poseEvidence(r, try std.fmt.bufPrint(&name, "{s}-{s}", .{ @tagName(kind), phase }));
+            }
+            if (recovery) break;
+            try r.step((up.input.Input{}).snapshot(), 1.0 / 60.0);
+        }
+    }
 }

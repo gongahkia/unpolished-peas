@@ -498,3 +498,33 @@ its final rerun after cleanup is recorded next.
 
 Final post-catalog rerun: 33/33 tests and 15/15 test/web steps passed. Full input
 route tick counts remain 6,577 keyboard/mouse and 6,320 virtual controller.
+
+## 2026-11-10 — action/menu studies and actual death-route captures
+
+Added opt-in captures to existing tests (no new runtime fixtures or test count).
+The ordinary earned-currency → death → respawn → recovery test now retains all
+three relevant frames under ASHEN_ROUTE_EVIDENCE. Reviewed them: actual death
+shows HP 0 and the drop-loss explanation; respawn restores 100 HP/three flasks and
+shows the distant ember drop; recovery clears the drop and reports recovered
+currency (75 embers including enemies defeated en route).
+
+ASHEN_POSE_EVIDENCE additionally captures all menu fixtures and isolated enemy
+windup, release, strike and recovery states. These arranged studies are labeled
+as fixtures; they do not replace the complete ordinary-input routes. Reviewed
+Pike windup's narrow corridor, Drifter strike fan, Censer anticipation/moving shot,
+Hound charge, Warden recovery/player damage and the death panel. Corrected the
+Hound fixture to its actual 60 HP, and kept the boss in its normal slot so the
+study HUD does not imply a missing Warden. No production rules/art changed.
+
+From the game directory:
+
+```
+ASHEN_ROUTE_EVIDENCE=zig-out/evidence/routes ASHEN_POSE_EVIDENCE=zig-out/evidence/poses zig build test -j2 --summary all
+```
+
+Result: all 7 steps and 33 tests pass. Optimized tests/package/new browser references
+also passed all 15 steps/33 tests before these test-only capture helpers. The fresh
+archive-consumer run at b26b9651/tree a0395289089868f891e6f5d78bf46d68da9d5352 passed
+all four commands; root `zig-out/diagnostics/ashen-external/result.json` retains
+this latest production bundle/hash. Full SDL presentation/reload verification is
+running against this presentation increment; final browser rerun follows it.

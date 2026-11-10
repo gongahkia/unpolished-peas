@@ -178,6 +178,9 @@ test "complete keyboard mouse and controller journeys save continue and replay" 
 test "ordinary input earns currency dies respawns and recovers the drop" {
     const r = try Runner.initSeeded(std.testing.allocator, game.width, game.height, game.default_seed);
     defer r.deinit();
+    const evidence = std.process.getEnvVarOwned(std.testing.allocator, "ASHEN_ROUTE_EVIDENCE") catch null;
+    defer if (evidence) |dir| std.testing.allocator.free(dir);
+    if (evidence) |dir| try std.fs.cwd().makePath(dir);
     var input = up.input.Input{};
     input.set(.start, true);
     try r.step(input.snapshot(), 1.0 / 60.0);
@@ -203,6 +206,7 @@ test "ordinary input earns currency dies respawns and recovers the drop" {
     try std.testing.expectEqual(@as(u8, 0), r.game.state.player.hp);
     try std.testing.expectEqual(carried, r.game.state.drop.amount);
     try std.testing.expectEqual(@as(u32, 0), r.game.state.embers);
+    if (evidence) |dir| try capture(r, dir, .keyboard_mouse, "death");
     const drop_pos = r.game.state.drop.pos;
     input = .{};
     input.set(.start, true);
@@ -210,6 +214,7 @@ test "ordinary input earns currency dies respawns and recovers the drop" {
     try std.testing.expectEqual(@as(f32, 70), r.game.state.pos.x);
     try std.testing.expectEqual(@as(u8, 100), r.game.state.player.hp);
     try std.testing.expect(r.game.state.enemies[0].hp > 0);
+    if (evidence) |dir| try capture(r, dir, .keyboard_mouse, "respawn");
     for (0..8000) |_| {
         const cmd = pilot.command(&r.game.state, drop_pos);
         apply(&input, &r.game, cmd, .keyboard_mouse);
@@ -219,4 +224,5 @@ test "ordinary input earns currency dies respawns and recovers the drop" {
     }
     try std.testing.expectEqual(@as(u32, 0), r.game.state.drop.amount);
     try std.testing.expect(r.game.state.embers >= carried);
+    if (evidence) |dir| try capture(r, dir, .keyboard_mouse, "recovered");
 }
