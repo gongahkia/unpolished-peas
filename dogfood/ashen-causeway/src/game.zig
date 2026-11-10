@@ -11,20 +11,20 @@ pub const storage_id = "unpolished-peas.ashen-causeway";
 const Color = up.core.Color;
 const Vec = world.Vec;
 const bindings = [_]up.input.Action{
-    .{ .name = "left", .binding = .{ .key = .left } },                                     .{ .name = "left", .binding = .{ .physical_key = .a } },
-    .{ .name = "right", .binding = .{ .key = .right } },                                   .{ .name = "right", .binding = .{ .physical_key = .d } },
-    .{ .name = "up", .binding = .{ .key = .up } },                                         .{ .name = "up", .binding = .{ .physical_key = .w } },
-    .{ .name = "down", .binding = .{ .key = .down } },                                     .{ .name = "down", .binding = .{ .physical_key = .s } },
-    .{ .name = "left", .binding = .{ .gamepad_axis = .{ .axis = .left_x, .sign = -1 } } }, .{ .name = "right", .binding = .{ .gamepad_axis = .{ .axis = .left_x } } },
-    .{ .name = "up", .binding = .{ .gamepad_axis = .{ .axis = .left_y, .sign = -1 } } },   .{ .name = "down", .binding = .{ .gamepad_axis = .{ .axis = .left_y } } },
-    .{ .name = "light", .binding = .{ .physical_key = .j } },                              .{ .name = "light", .binding = .{ .pointer_button = .left } },
-    .{ .name = "light", .binding = .{ .gamepad_button = .left_shoulder } },                .{ .name = "heavy", .binding = .{ .physical_key = .k } },
-    .{ .name = "heavy", .binding = .{ .pointer_button = .right } },                        .{ .name = "heavy", .binding = .{ .gamepad_button = .right_shoulder } },
-    .{ .name = "dodge", .binding = .{ .key = .action } },                                  .{ .name = "dodge", .binding = .{ .gamepad_button = .south } },
-    .{ .name = "heal", .binding = .{ .physical_key = .h } },                               .{ .name = "heal", .binding = .{ .gamepad_button = .north } },
-    .{ .name = "interact", .binding = .{ .physical_key = .e } },                           .{ .name = "interact", .binding = .{ .gamepad_button = .west } },
-    .{ .name = "swap", .binding = .{ .physical_key = .q } },                               .{ .name = "swap", .binding = .{ .gamepad_button = .back } },
-    .{ .name = "pause", .binding = .{ .key = .cancel } },                                  .{ .name = "pause", .binding = .{ .gamepad_button = .start } },
+    .{ .name = "left", .binding = .{ .key = .left } },                                                        .{ .name = "left", .binding = .{ .physical_key = .a } },
+    .{ .name = "right", .binding = .{ .key = .right } },                                                      .{ .name = "right", .binding = .{ .physical_key = .d } },
+    .{ .name = "up", .binding = .{ .key = .up } },                                                            .{ .name = "up", .binding = .{ .physical_key = .w } },
+    .{ .name = "down", .binding = .{ .key = .down } },                                                        .{ .name = "down", .binding = .{ .physical_key = .s } },
+    .{ .name = "left", .binding = .{ .gamepad_axis = .{ .axis = .left_x, .sign = -1, .threshold = 0.15 } } }, .{ .name = "right", .binding = .{ .gamepad_axis = .{ .axis = .left_x, .threshold = 0.15 } } },
+    .{ .name = "up", .binding = .{ .gamepad_axis = .{ .axis = .left_y, .sign = -1, .threshold = 0.15 } } },   .{ .name = "down", .binding = .{ .gamepad_axis = .{ .axis = .left_y, .threshold = 0.15 } } },
+    .{ .name = "light", .binding = .{ .physical_key = .j } },                                                 .{ .name = "light", .binding = .{ .pointer_button = .left } },
+    .{ .name = "light", .binding = .{ .gamepad_button = .left_shoulder } },                                   .{ .name = "heavy", .binding = .{ .physical_key = .k } },
+    .{ .name = "heavy", .binding = .{ .pointer_button = .right } },                                           .{ .name = "heavy", .binding = .{ .gamepad_button = .right_shoulder } },
+    .{ .name = "dodge", .binding = .{ .key = .action } },                                                     .{ .name = "dodge", .binding = .{ .gamepad_button = .south } },
+    .{ .name = "heal", .binding = .{ .physical_key = .h } },                                                  .{ .name = "heal", .binding = .{ .gamepad_button = .north } },
+    .{ .name = "interact", .binding = .{ .physical_key = .e } },                                              .{ .name = "interact", .binding = .{ .gamepad_button = .west } },
+    .{ .name = "swap", .binding = .{ .physical_key = .q } },                                                  .{ .name = "swap", .binding = .{ .gamepad_button = .back } },
+    .{ .name = "pause", .binding = .{ .key = .cancel } },                                                     .{ .name = "pause", .binding = .{ .gamepad_button = .start } },
     .{ .name = "confirm", .binding = .{ .key = .start } },
 };
 const Screen = enum { title, play, pause, death, settings, victory, credits };
@@ -178,6 +178,7 @@ pub const Game = struct {
             return;
         }
         if (g.screen == .victory) {
+            if (g.pressed("pause")) g.persist(ctx);
             if (confirm) g.screen = .credits;
             return;
         }
@@ -487,7 +488,10 @@ pub const Game = struct {
                     c.drawText("UP / DOWN SELECT - LEFT / RIGHT CHANGE\nESCAPE / START BACK", 40, 196, gold);
                 },
                 .death => c.drawText("Your embers remain where you fell.\nA second death replaces that drop, even with zero.\n\nENTER / E - RETURN TO THE LAST LANTERN", 40, 100, white),
-                .victory => c.drawText("The living coal catches. Across the drowned quay,\nwindows answer with small and patient lights.\nThe ferryman has brought the lost a way home.\n\nYour journey is saved.\nENTER / E - CREDITS", 40, 100, white),
+                .victory => {
+                    c.drawText("The living coal catches. Across the drowned quay,\nwindows answer with small and patient lights.\nThe ferryman has brought the lost a way home.\n\nENTER / E - CREDITS", 40, 100, white);
+                    c.drawText(if (g.save_failed) "SAVE FAILED - ESCAPE / START RETRIES" else "JOURNEY SAVED", 40, 166, gold);
+                },
                 .credits => c.drawText("ASHEN CAUSEWAY\nGame design and implementation: Codex with Gabriel\nFramework: unpolished-peas\nCurrent art: original game-owned Canvas geometry\n\nBuilt as a public-API framework dogfood game.\nSee GUIDE.md and FRICTION.md for evidence.\n\nENTER / E - TITLE", 40, 90, white),
                 else => {},
             }
@@ -554,6 +558,21 @@ test "rejected writes show warning preserve old journey and can retry" {
     try std.testing.expect(!r.game.save_failed);
     const loaded = try save.decode(try store.capability().read(save.key, &bytes));
     try std.testing.expectEqual(@as(u32, 99), loaded.state.embers);
+    r.game.state.bells = .{true} ** 3;
+    r.game.state.boss_defeated = true;
+    r.game.state.completed = true;
+    r.game.screen = .victory;
+    failing.fail_index = failing.alloc_index;
+    r.game.persist(&r.context);
+    try std.testing.expect(r.game.save_failed);
+    try r.draw(0);
+    failing.fail_index = std.math.maxInt(usize);
+    var retry_input = up.input.Input{};
+    retry_input.set(.cancel, true);
+    try r.step(retry_input.snapshot(), 1.0 / 60.0);
+    try std.testing.expect(!r.game.save_failed);
+    const ending = try save.decode(try store.capability().read(save.key, &bytes));
+    try std.testing.expect(ending.state.completed);
 }
 test "corrupt save is retained until explicit new game and settings survive reset" {
     var store: up.testSupport.InMemorySaveStore = undefined;
