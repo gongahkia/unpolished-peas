@@ -528,3 +528,27 @@ archive-consumer run at b26b9651/tree a0395289089868f891e6f5d78bf46d68da9d5352 p
 all four commands; root `zig-out/diagnostics/ashen-external/result.json` retains
 this latest production bundle/hash. Full SDL presentation/reload verification is
 running against this presentation increment; final browser rerun follows it.
+
+## 2026-11-10 — truthful title after persistence and refreshed host proof
+
+Successful writes now clear stale corruption/missing-save title text; failed
+writes still retain the old explanation/data. Settings-only success has its own
+status. The corrupt-slot test asserts cleared load_problem and the accurate
+Continue note after explicit New Game. All 33 tests and 15 test/web steps pass.
+
+With the current web build served on 8114, ran the trusted browser smoke in both
+Chromium 157.0.8103.39 and Firefox 158.0. Existing input/settings/reload/rejected-
+write/retry and finite nonzero audio checks pass; the new corrupt slot → explicit
+New Game → title → actual reload/Continue route passes too. Reviewed both corrupt
+and replacement title captures. A changed checksum alone is not proof of exact
+copy; the game regression checks the actual note. Evidence: game
+`zig-out/evidence/browser-smoke.json`, PNGs, and root
+`zig-out/diagnostics/ashen-persistence-polish.log`.
+
+The preceding complete SDL rerun also passed at the new pose/pause presentation:
+`python3 script/test_ashen_causeway_native.py --output zig-out/diagnostics/ashen-native-polish`.
+Both route and new-process Continue verify ending/progression and audio cleanup;
+the generated UUID save directory was confirmed removed by the guarded helper.
+That run precedes this title-copy-only fix. The root `zig build test-docs docs -Dwith_sdl=false -j2 --summary all`
+check passed 43 steps/36 tests, including API/asset/font/audio/replay recipe checks.
+Its printed invalid-link/stale-reference messages belong to negative fixtures.

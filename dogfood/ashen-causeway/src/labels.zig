@@ -64,6 +64,7 @@ pub const labels = [_][]const u8{
     "SPACE DODGES. STAMINA RETURNS WHILE YOU REST.",
     "Save corrupt or unsupported. New Game replaces it.",
     "Save unreadable. New Game replaces it.",
+    "Settings saved. Begin when ready.",
     "Stamina",
     "Storage unavailable. Play remains available.",
     "THE BEACON BURNS",

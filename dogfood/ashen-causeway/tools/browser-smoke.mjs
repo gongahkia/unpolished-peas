@@ -4,6 +4,7 @@ import {chromium, firefox} from '../../../script/browser-authoring/node_modules/
 import {mkdir, writeFile} from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import {instrumentation} from '../../../script/browser-authoring/instrumentation.mjs';
+const atobValueLength=raw=>Buffer.from(raw.slice(6),'base64').length;
 const out = new URL('../zig-out/evidence/', import.meta.url);
 await mkdir(out, {recursive:true});
 const results=[];
@@ -75,8 +76,20 @@ for (const name of (process.env.PEAS_SMOKE_BROWSERS ?? 'chromium').split(',')) {
     await page.waitForFunction(()=>window.peasTest?.nonzero>0);
     const audio=await page.evaluate(()=>({phase:window.unpolishedPeas.host.audio().phase,submissions:window.peasTest.submissions,nonzero:window.peasTest.nonzero,invalidPcm:window.peasTest.invalidPcm}));
     assert.equal(audio.invalidPcm,0);assert.ok(audio.nonzero>0);assert.equal(audio.phase,'active');
+    // Explicit New Game replaces a corrupt slot; the new journey reloads.
+    const key=(await readSave()).key;
+    await page.evaluate(key=>localStorage.setItem(key,'UPST1:YnJva2Vu'),key);
+    await page.reload();await page.waitForFunction(()=>window.unpolishedPeas?.rendererDiagnostic?.context_status==='ready');await canvas.focus();
+    const corrupt=await capture('corrupt-title');
+    await press('ArrowDown');await press('Enter');
+    const replacement=await readSave();assert.equal(atobValueLength(replacement.raw),40);
+    await press('Escape');for(let i=0;i<7;i++) await press('ArrowDown');await press('Enter');
+    const replaced=await capture('replaced-title');assert.notEqual(replaced.sum,corrupt.sum);
+    await page.reload();await page.waitForFunction(()=>window.unpolishedPeas?.rendererDiagnostic?.context_status==='ready');await canvas.focus();
+    await press('Enter');await capture('replacement-continued');
+    assert.equal((await readSave()).raw,replacement.raw);
     assert.deepEqual(errors,[]);
-    results.push({browser:name,version:browser.version(),title,play,action,pause,continued,rejected,retry,settings,credits,encounter,duel,dodge,audio,persistence:{reload:true,rejectedWritePreserved:true,retry:true},errors,coverage:'Trusted keyboard smoke and nonzero WebGL readback, not full route or parity validation'});
+    results.push({browser:name,version:browser.version(),title,play,action,pause,continued,rejected,retry,settings,credits,encounter,duel,dodge,audio,persistence:{reload:true,rejectedWritePreserved:true,retry:true,corruptNewGameReload:true},errors,coverage:'Trusted keyboard smoke and nonzero WebGL readback, not full route or parity validation'});
   } finally {await browser.close();}
 }
 await writeFile(new URL('browser-smoke.json',out),JSON.stringify(results,null,2));

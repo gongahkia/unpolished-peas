@@ -174,6 +174,8 @@ pub const Game = struct {
             return;
         };
         g.save_failed = false;
+        g.load_problem = false;
+        g.load_note = if (g.journey_started) "Journey found. Continue from your last lantern." else "Settings saved. Begin when ready.";
     }
     fn menu(g: *Game, ctx: *up.core.GameContext) !void {
         const confirm = g.pressed("confirm") or g.pressed("interact") or g.pressed("dodge");
@@ -720,6 +722,8 @@ test "corrupt save is retained until explicit new game and settings survive rese
     input.set(.start, true);
     try r.step(input.snapshot(), 1.0 / 60.0);
     try std.testing.expectEqual(Screen.play, r.game.screen);
+    try std.testing.expect(!r.game.load_problem);
+    try std.testing.expectEqualStrings("Journey found. Continue from your last lantern.", r.game.load_note);
     const loaded = try save.decode(try store.capability().read(save.key, &b));
     try std.testing.expectEqual(@as(u8, 20), loaded.settings.music);
     try std.testing.expectEqual(@as(u8, 0), loaded.state.upgrade);

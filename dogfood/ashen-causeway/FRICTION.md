@@ -221,3 +221,24 @@ that menu route and requires nonempty visible footer pixels. Run
 Status: resolved with regression coverage; relevant browser/native rereview follows
 as part of the final presentation checks. Prepared copy now excludes test names
 from its game-owned extraction helper; no decoding/layout enters drawing.
+
+## Successful replacement left stale title copy (resolved game UI bug)
+
+Task: explicitly replace a corrupt slot and return to a truthful Continue screen.
+Context: 80ff9134, Intel macOS/Zig 0.15.2, Debug tests and ReleaseSmall browser.
+Expected: successful persistence clears the old load problem and updates title
+status. Observed in Game.persist: save_failed cleared, while load_problem/load_note
+retained the prior corruption or missing-save text. Category: low-severity game
+state/copy bug. SaveStore already wrote the correct bytes; no engine fix needed.
+
+Resolution: update the load flags/copy only after a successful write; rejected
+writes retain the previous explanation and good data. Initial settings-only saves
+say settings saved, while a started journey offers Continue. The existing corrupt-
+slot regression now asserts the cleared flag and accurate note after New Game.
+Reproduce with `zig build test web -j2`, serve the bundle on 8114 and run from root:
+`PEAS_SMOKE_BROWSERS=chromium,firefox node dogfood/ashen-causeway/tools/browser-smoke.mjs`.
+Both actual browsers pass corrupt title → explicit New Game → title → reload →
+Continue alongside the existing rejected-write/retry/audio checks. Reviewed
+chromium-corrupt-title/replaced-title PNGs. Logs: root
+`zig-out/diagnostics/ashen-persistence-polish.log`; PNGs/JSON in game
+`zig-out/evidence`. Status resolved; no workaround or framework proposal.

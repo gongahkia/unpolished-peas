@@ -57,7 +57,8 @@ workload, a 14.487 ms unexplained native update outlier and allocation scope.
 These results do not justify a renderer rewrite or a universal frame-rate claim.
 
 No engine defect was demonstrated or engine fix made by this game. Game defects were fixed with regressions: repeated enemy interruption,
-ending-save retry, missing healing poses and hidden upgrade rejection feedback.
+ending-save retry, missing healing poses, hidden upgrade rejection feedback and stale title copy
+after successful replacement.
 The principal remaining workaround is an optional public-replay-to-browser-wire
 bridge and test HTTP/RAF shim. It duplicates ABI offsets, expands this input to
 about 12 MB and stays out of shipping output. FRICTION records exact context,
