@@ -77,3 +77,18 @@ On a new journey, the bottom hint walks through movement, committed attacks,
 stamina/dodging, vulnerable healing and lantern replenishment as those actions
 are used. Continue skips that initial tutorial. Rejected/expired actions leave a
 brief textual cue and sound; hit/hurt cues accompany the corresponding events.
+
+Deterministic complete-route checks are part of `zig build test`. To retain
+headless gameplay PNGs and public input replays, run:
+
+```
+ASHEN_ROUTE_EVIDENCE=zig-out/evidence/routes zig build test
+```
+
+They cover winning with keyboard/mouse and virtual controller input, both boss
+phases, checkpoints, a menu upgrade, optional reward, lift traversal, save/continue,
+fixed-input replay, plus a separate death/currency-recovery route. These are
+headless automation, not manual play or full native/browser route verification.
+The automated routes are much faster than a first human run and do not verify
+the 15–30 minute pacing target. At victory, Escape/Start retries a failed save;
+the status text reports whether the ending has actually been saved.

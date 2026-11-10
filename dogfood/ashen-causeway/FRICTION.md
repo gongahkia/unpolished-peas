@@ -80,3 +80,21 @@ score is larger than OGG but small and reproducible without an external encoder
 (352,844 encoded bytes). This is an asset choice, not a demonstrated engine gap.
 No engine change is requested. Tests verify decoded sources, finite nonzero PCM,
 zero-volume silence and stale handles after release across three cycles.
+
+## Ending save recovery (resolved game bug)
+
+Task: recover when the final progression write is rejected. Baseline c767c692,
+Intel macOS/Zig 0.15.2, Debug/native headless GameProtocol. Expected: victory
+accurately reports pending persistence and allows retry. Observed in code and
+captured ending screen: unconditional "Your journey is saved" text; the victory
+menu ignored the pause/save control. This was a medium-severity game UI/state-flow
+bug, not a SaveStore defect. Sources: Game.menu's victory branch and Game.draw
+in src/game.zig; the public SaveStore already retained good data on rejection.
+
+Reproduce/check: `cd dogfood/ashen-causeway && zig build test -j2`. The rejected-
+write test now enters the ending with a failing store, renders its warning,
+restores storage, presses Escape, and decodes a successfully saved completed
+journey. Resolution: conditional status text and Escape/Start retry at victory.
+No engine workaround or framework improvement is needed. Status: resolved with
+regression coverage; real-browser final-write rejection is still a separate
+full-route verification item.

@@ -190,3 +190,57 @@ Chromium 157.0.8103.39 accepted 457 nonzero submissions; Firefox 158.0 accepted
 450 nonzero submissions out of 452 in this run, with zero invalid PCM or page
 errors. Counts depend on scheduling. These establish submission, not listening
 quality, native speaker output, broad performance or a complete playthrough.
+
+## Complete deterministic routes — 2026-11-10
+
+Added a game-owned test pilot in src/route.zig and input translation in
+src/route_protocol.zig. The pilot only observes state and supplies ordinary
+commands/input snapshots. Winning routes never teleport, grant currency,
+replenish resources, set progression flags or delete enemies. Its fixed-capacity
+BFS is automation-only; player navigation remains manual.
+
+Both keyboard/mouse and virtual-controller GameProtocol routes now complete:
+opening → first bell → Cloister checkpoint → real pause-menu weapon upgrade →
+optional flask/charm reliquary → second bell → return lift both ways → Crown
+checkpoint → both Warden phases and a shock → third bell → beacon ending.
+Each route records public replay input, then runs that fixed input on a fresh
+runner with no adaptive pilot. Ending save bytes and final Canvas traces match.
+A separate route earns embers, deliberately refuses attacks/dodges until killed,
+uses the death-screen input to respawn, observes restored resources/enemies and
+recovers the nonzero drop through normal input. A new runner also loads each
+winning save and confirms boss/ending/equipment progression.
+
+Exact command from the game directory:
+
+```
+ASHEN_ROUTE_EVIDENCE=zig-out/evidence/routes zig build test -j2 --summary all
+zig build test -Doptimize=ReleaseFast -j2 --summary all
+```
+
+Both passed 29 tests. Captures and encoded public UPR files are retained under
+`zig-out/evidence/routes` for both input modes. Warden anticipation, phase
+transition, shock and ending PNGs were inspected. These are actual headless
+GameProtocol gameplay captures, not native GPU/browser screenshots. Complete
+winning routes on native/browser hosts remain to be verified. Virtual-controller
+coverage does not establish physical-controller compatibility.
+
+The expert automation's route is roughly 105–110 seconds of simulated input,
+plus small menu/start overhead; the shorter world-only route takes about 87
+seconds and omits the lift/checkpoint/upgrade detour. Neither establishes a first
+human successful-playthrough duration. The original 15–30 minute target remains
+unverified, and pacing/content review remains required; do not present these
+runs as evidence that the target is met or that the game is polished/enjoyable.
+
+Route work also tightened movement ActionMap axis thresholds to 0.15 so modest
+stick components retain directional precision. It exposed a victory recovery
+problem: the screen claimed a saved ending even on a failed write and had no
+retry. It now displays the actual status and accepts Escape/Start to retry.
+The existing rejected-write test now verifies this final-screen recovery too.
+
+Current remaining gates after a69e14b4/a77bb9f2: authored text and environment/UI
+polish, encounter/pacing assessment against the first-run duration target, real
+native/browser complete-route and reload verification (including Safari),
+external archive consumer builds/runs, representative performance/allocation
+measurement, remaining prerequisite/reference review, and the dated assessment
+plus final requirement-by-requirement completion audit. Passing these headless
+routes does not close those gates.
