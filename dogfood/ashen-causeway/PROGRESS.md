@@ -385,3 +385,21 @@ smokes cover trusted keyboard/pointer/audio separately. No renderer tolerances o
 physical IME claims changed. The public replay bridge's maintenance cost is
 recorded in FRICTION. Pacing, continuous motion review, whole-game profiling,
 reference review and final assessment remain open; tests do not establish polish.
+
+## 2026-11-10 — measured CPU resources and SDL presentation
+
+Added optional profiling helpers, reusing public HeadlessGameRunner and the
+existing native timing reporter/counting-allocator pattern. Three complete CPU
+routes and six serial SDL windows passed. Full measurements, exact commands,
+workload/hardware and limits are in PROFILE.md. Headless draws and audio mixing
+allocate zero times throughout each route; updates make 31 requests totaling
+2,530 bytes after init. Peak tracked live bytes are 1,922,822 and return to zero
+after cleanup on every run. No whole-game zero-allocation claim is made.
+
+Native 480×270 Canvas / 1920×1080 output, ReleaseFast on Intel i5/Iris Plus:
+ordinary draw medians 0.209–0.237 ms, phase-two/shock 0.303–0.369 ms. Presented-frame
+medians 16.649–16.677 ms include swapchain pacing; all retained frames have both
+render passes. No GPU-completion or browser-performance measurement is inferred.
+An isolated 14.487 ms native update aggregate remains unattributed. No bottleneck
+justifies a rendering redesign. The exact disposable profile namespace was removed
+by the guarded helper and its absence checked after the run.

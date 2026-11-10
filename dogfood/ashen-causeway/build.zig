@@ -60,6 +60,20 @@ pub fn build(b: *std.Build) void {
     if (b.args) |args| export_run.addArgs(args);
     b.step("export-browser-replay", "Export verified input and CPU references for browser route checks").dependOn(&export_run.step);
 
+    const profile = b.addExecutable(.{ .name = "ashen-profile-route", .root_module = b.createModule(.{
+        .root_source_file = b.path("src/profile_route.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = peas.module("unpolished-peas") }},
+    }) });
+    const profile_run = b.addRunArtifact(profile);
+    if (b.args) |args| profile_run.addArgs(args);
+    b.step("profile-route", "Profile CPU callbacks and allocation events along recorded gameplay").dependOn(&profile_run.step);
+
+    const profiling_step = b.step("build-profiling", "Build optional profiling tools before timing runs");
+    profiling_step.dependOn(&b.addInstallArtifact(profile, .{ .dest_dir = .{ .override = .{ .custom = "verification" } } }).step);
+    profiling_step.dependOn(&b.addInstallArtifact(verification, .{ .dest_dir = .{ .override = .{ .custom = "verification" } } }).step);
+
     // `zig build` already installs this layout. The named step makes the
     // distributable desktop output discoverable: zig-out/bin + zig-out/assets.
     const package_step = b.step("package", "Build the portable Ashen Causeway desktop layout");

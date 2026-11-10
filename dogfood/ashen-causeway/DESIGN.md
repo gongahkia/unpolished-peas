@@ -76,7 +76,9 @@ Title (Continue/New game/settings/credits), contextual tutorial, pause, settings
 death with recovery explanation, victory and credits are required screens.
 Prepare authored text outside drawing. Fixed capacities: 32 enemies, 32 shots,
 64 visual effects, 16 wall rectangles per room, one currency drop. No recurring
-simulation/drawing allocations. Hosts own capabilities; game releases all loaded
+world-rule/drawing allocations; profile portable service requests separately.
+PROFILE.md records small update-time storage/audio requests and zero draw/mix
+allocation events along the complete route. Hosts own capabilities; game releases all loaded
 assets/layouts/audio handles at shutdown, including partial-init cleanup.
 
 Save version 1 explicitly encodes checkpoint, currency, drop, weapon, upgrades,

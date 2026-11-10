@@ -1,7 +1,7 @@
 # Ashen Causeway development build
 
 This is an unfinished action RPG prototype. The complete scope and acceptance
-gates remain in [DESIGN.md](DESIGN.md). First-run pacing assessment, whole-game profiling and final
+gates remain in [DESIGN.md](DESIGN.md). First-run pacing assessment and final
 encounter/presentation review remain open.
 
 From this directory, using Zig 0.15.2:
@@ -154,3 +154,8 @@ These checks are automated input replay, not physical input, play-duration or
 performance measurements. The trusted-input smoke checks cover real browser
 keyboard/pointer integration separately. Verification hosts/exporters are optional
 build steps and add no replay bridge to the shipped game.
+
+[PROFILE.md](PROFILE.md) records complete-route CPU/allocation observations and
+short real SDL ordinary/boss measurements, with exact reproduction commands and
+boundaries. The optional `build-profiling`/`profile-route` targets do not change
+normal run/package output.

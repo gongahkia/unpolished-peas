@@ -26,6 +26,8 @@ const Desktop = struct {
     replay: ?up.preview.developer.InputReplay = null,
     output: ?[]u8 = null,
     continuing: bool = false,
+    profiling: bool = false,
+    profile_start: usize = 0,
     tick: usize = 0,
     captured: [5]bool = .{false} ** 5,
     pub fn init(d: *Desktop, ctx: *up.core.GameContext) !void {
@@ -34,7 +36,8 @@ const Desktop = struct {
         const mode = try std.process.getEnvVarOwned(allocator, "ASHEN_VERIFY_MODE");
         defer allocator.free(mode);
         d.continuing = std.mem.eql(u8, mode, "continue");
-        if (!d.continuing and !std.mem.eql(u8, mode, "route")) return error.InvalidVerificationMode;
+        d.profiling = std.mem.eql(u8, mode, "profile");
+        if (!d.continuing and !d.profiling and !std.mem.eql(u8, mode, "route")) return error.InvalidVerificationMode;
         d.output = try std.process.getEnvVarOwned(allocator, "ASHEN_VERIFY_OUTPUT");
         try std.fs.cwd().makePath(d.output.?);
         try d.state.init(ctx);
@@ -50,6 +53,25 @@ const Desktop = struct {
             defer allocator.free(bytes);
             d.replay = try up.preview.developer.parseInputReplay(allocator, bytes);
             if (d.replay.?.fixed_hz != 60 or d.replay.?.simulation_seed != game.default_seed) return error.ReplayEnvironmentMismatch;
+            if (d.profiling) {
+                const skip = try std.process.getEnvVarOwned(allocator, "ASHEN_PROFILE_SKIP");
+                defer allocator.free(skip);
+                d.profile_start = try std.fmt.parseInt(usize, skip, 10);
+                if (d.profile_start + 600 >= d.replay.?.frames.len) return error.ProfileRangeInvalid;
+                var pcm: [800]up.assets.AudioSample = undefined;
+                for (0..d.profile_start) |index| {
+                    var input = up.input.Input{};
+                    try d.replay.?.applyFrame(index, &input);
+                    var borrowed = ctx.*;
+                    borrowed.input = &input;
+                    borrowed.elapsed_seconds = 1.0 / 60.0;
+                    borrowed.interpolation_alpha = 0;
+                    try d.state.update(&borrowed, 1.0 / 60.0);
+                    try (try ctx.requireAudio()).mix(&pcm);
+                }
+                d.tick = d.profile_start;
+                std.debug.print("ashen profile start: tick={d} room={d}\n", .{ d.tick, d.state.state.room });
+            }
         }
     }
     pub fn update(d: *Desktop, ctx: *up.core.GameContext, dt: f32) !void {
@@ -66,7 +88,7 @@ const Desktop = struct {
         try d.state.update(&borrowed, dt);
         d.tick += 1;
         if (d.tick % 600 == 0) std.debug.print("ashen native progress: ticks={d} room={d} hp={d}\n", .{ d.tick, d.state.state.room, d.state.state.player.hp });
-        if (d.continuing or d.tick == d.replay.?.frames.len) {
+        if (!d.profiling and (d.continuing or d.tick == d.replay.?.frames.len)) {
             if (!d.state.state.completed or d.state.save_failed) return error.EndingNotSaved;
             var bytes: [save.size]u8 = undefined;
             const persisted = try save.decode(try (try ctx.requireSaveData()).read(save.key, &bytes));
@@ -81,6 +103,7 @@ const Desktop = struct {
     }
     pub fn draw(d: *Desktop, ctx: *up.core.GameContext) !void {
         try d.state.draw(ctx);
+        if (d.profiling) return;
         if (d.state.state.room == 1 and !d.captured[0]) {
             try d.capture(ctx, "cloister");
             d.captured[0] = true;
@@ -106,6 +129,10 @@ const Desktop = struct {
     }
     pub fn deinit(d: *Desktop, ctx: *up.core.GameContext) !void {
         const allocator = try ctx.requireAllocator();
+        if (d.profiling) {
+            passed = d.tick >= d.profile_start + 240;
+            std.debug.print("ashen profile end: tick={d} room={d}\n", .{ d.tick, d.state.state.room });
+        }
         try d.state.deinit(ctx);
         if (d.replay) |*r| r.deinit(allocator);
         d.replay = null;
@@ -113,6 +140,7 @@ const Desktop = struct {
         d.output = null;
         if ((try ctx.requireAudio()).hasActivePlayback()) return error.PlaybackSurvivedCleanup;
         cleaned = true;
+        if (d.profiling and !passed) return error.IncompleteProfile;
     }
 };
 pub fn main() !void {

@@ -159,3 +159,26 @@ model. Status: integration verified with the game-owned bridge; proposal remains
 open. Existing renderer diagnostics, independent probes and compareReference
 readbacks were reusable unchanged and removed the need for a second renderer test
 system. Trusted input/audio smoke tests remain separate.
+
+## Profiled ordinary rendering and resource lifecycle (working facilities)
+
+Task: identify real RPG CPU/resource costs before selecting optional rendering.
+Context/reproduction/evidence: PROFILE.md and root
+`zig-out/diagnostics/ashen-profile`, game baseline 471a17dd, Intel macOS15.7.7,
+Zig0.15.2/ReleaseFast. Public Canvas, HeadlessGameRunner, Audio.mix and ordinary
+SDL host were sufficient. Existing `examples/render_capacity_game.zig`,
+`src/render_benchmark.zig` and the native UP_NATIVE_TIMING_SAMPLES reporter
+provided the observation pattern. Optional game-owned wrappers retain clocks and
+allocation counters outside production game state and outside timed file I/O.
+
+Expected/observed: complete-route CPU and bounded native sample capture, resource
+release and visible busy shock work can be measured without changing gameplay.
+All three CPU runs return tracked live bytes to zero. Drawing/mixing have no
+allocation events; 31 update requests (2,530 bytes) include service work, so the
+initial no-recurring-allocation design is qualified rather than asserted for the
+whole host. Native samples retain presented-frame checks and reveal swapchain
+waiting separately from game draw. Classification: facilities working; no engine
+defect or API change proposed. Practical impact: no demonstrated rendering
+bottleneck at this workload/resolution. No workaround beyond optional developer
+instrumentation; no shipping runtime cost. Larger capacity/other hardware and
+browser performance remain outside these observations.
