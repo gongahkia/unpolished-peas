@@ -54,6 +54,7 @@ framework validation commands in example guides run from the Peas checkout.
 | A complete local two-player board game | [Chess](guides/chess.md) |
 | Arena action, owned resources and camera | [Neon Siege](../dogfood/neon-siege/README.md) |
 | Scrolling, collision and animation selection in game code | [Lantern Leap](../dogfood/lantern-leap/README.md) |
+| Action RPG dogfood in development; completion gates remain open | [Ashen Causeway guide](../dogfood/ashen-causeway/GUIDE.md) |
 
 Seed Sprint is the starting project; the workbenches teach individual APIs.
 Neon Siege and Lantern Leap show larger game structure. Chess demonstrates
