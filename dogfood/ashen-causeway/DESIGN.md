@@ -1,0 +1,102 @@
+# Ashen Causeway
+
+Design established 2026-11-10, before implementation. Status: in development.
+
+The last ferryman carries a living coal through a drowned monastery to rekindle
+its beacon. Ring three mooring bells, open the return lift, and defeat the Bell
+Warden. The ending returns light to the flooded causeway and names the people
+who kept it alive. Target: 15–30 minutes for a first successful run; unmeasured.
+
+## Bounded content
+
+Three connected areas: Reed Quay (movement and isolated duels), Silt Cloister
+(two flanking corridors, ranged pressure, optional reliquary), and Beacon Crown
+(vertical approach and a spacious boss court). Each has a rest lantern. A lift
+unlocked from the Cloister connects back to the Quay and bypasses its encounters.
+Optional reliquaries grant a flask charge and a stamina charm. Four enemies:
+Drifter (slow cleave), Pike Watch (long thrust), Censer (stationary ranged shots),
+and Hound (short approach dash, long recovery). Do not pack overlapping attacks
+around respawn points. Boss: Bell Warden, measured hammer arcs in phase one;
+below half health, a clearly announced transition adds alternating shock rings
+with a safe retreat interval. No damage during transition.
+
+Two freely switchable weapons: ferryman's sabre and mooring spear. Ember currency
+buys three capped weapon upgrades or vitality upgrades at lanterns. One equipped
+charm trades mobility/stamina benefits; no inventory grid, loot randomization,
+parry, block, lock-on, crafting or procedural levels. These are explicit scope
+choices; every feature requested in the objective remains in scope.
+
+## Controls and combat contract
+
+Keyboard/mouse must complete every route: WASD/arrows move, mouse aims, left click
+or J light, right click or K heavy, Space dodge, H heal, E interact, Q switch
+weapon, Escape pause. Gamepad uses stick movement/aim with facing retained while
+neutral; South dodge, shoulder attacks, North heal, West interact, Start pause.
+Menus describe bindings. Input rebinding uses public ActionMap facilities.
+
+60 fixed ticks/second. Facing is captured at attack start; attacks cannot turn,
+move or cancel until recovery ends. Dodge captures movement direction, or facing
+when stationary. No roll cancel from attacks/heals. A single pending action
+expires after 8 ticks; latest action replaces earlier input. Rejected actions
+provide a cue. A valid buffered input starts on the first free tick.
+
+| Weapon/action | Startup | Active | Recovery | Stamina | Damage | Reach |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Sabre light | 7 | 4 | 13 | 18 | 22 | 28 |
+| Sabre heavy | 19 | 5 | 23 | 34 | 44 | 34 |
+| Spear light | 12 | 3 | 18 | 22 | 27 | 44 |
+| Spear heavy | 27 | 4 | 28 | 42 | 58 | 52 |
+
+Intervals are half-open, measured from age zero. Dodge costs 28, lasts 26 ticks,
+and grants invulnerability at ages [3,15). Healing consumes a flask on acceptance,
+restores 45 HP at age 36, and commits for 60 ticks. Stamina regenerates one per
+tick after a 36-tick delay while idle; exhaustion uses the same delay and cannot
+spend below zero. Hits interrupt vulnerable actions, impose 12 ticks stagger,
+and grant 36 ticks damage immunity to prevent stun locks. One attack can damage
+each target once. Solid walls block attack line segments and movement; enemies
+obey the same collision boundary. Knockback resolves against walls.
+
+Death replaces any older currency drop with currently carried currency, even if
+zero. Respawn restores HP, stamina and flasks at the last lantern, resets normal
+enemies and transient combat/projectiles, preserves permanent unlocks and boss
+victory. Recovering the drop returns its currency once. Resting follows the same
+enemy/resource reset. No save serializes an attack or a projectile.
+
+## Presentation and ownership
+
+Ordinary Canvas, 480×270 logical pixels. Ink blue water, pale sandstone, warm
+copper lanterns, deliberate low resolution silhouettes and short directional
+weapon trails. Enemy anticipation uses pose, shape and sound as well as color.
+HUD: named health/stamina bars, flask count, embers, weapon and current objective.
+Calm sparse bell/drone ambience grows in the boss court; separate music/effects
+volume. Flash and shake toggles default restrained. Original procedural art/audio
+retain generation sources and provenance; reused fonts retain notices.
+
+Title (Continue/New game/settings/credits), contextual tutorial, pause, settings,
+death with recovery explanation, victory and credits are required screens.
+Prepare authored text outside drawing. Fixed capacities: 32 enemies, 32 shots,
+64 visual effects, 16 wall rectangles per room, one currency drop. No recurring
+simulation/drawing allocations. Hosts own capabilities; game releases all loaded
+assets/layouts/audio handles at shutdown, including partial-init cleanup.
+
+Save version 1 explicitly encodes checkpoint, currency, drop, weapon, upgrades,
+charms, permanent unlocks, boss victory and settings. Continue restores rested
+state. Missing/corrupt data starts safely with a visible explanation; failed writes
+show a persistent warning and preserve the previous good blob. New game must
+explicitly replace progress. Verify real process and browser reloads.
+
+## Acceptance and evidence gates
+
+Completion requires all objective requirements, not merely the initial combat
+module. Deterministic boundary tests cover combat, collision, AI, progression,
+death/recovery, saves and lifecycle. A full normal-input route must demonstrate
+opening → three areas → shortcut/reward → two boss phases → ending, plus death,
+drop loss/recovery, both weapons, upgrades, save/continue and repeated restarts.
+Review actual native/browser captures and interactions; iterate visible defects.
+Build through an external consumer. Run native, Chromium, Firefox and available
+Safari portable workflows. Report hardware checks separately. Profile ordinary
+and busiest combat with existing tools and record hardware, build, workload,
+frame times and allocations. First-run duration remains a target until measured.
+Canonical FRICTION.md records evidence, including facilities that work well.
+A dated assessment and GUIDE.md must link commands, evidence, limitations and
+focused commit IDs. Every existing README stays unchanged. No publish or push.
