@@ -68,8 +68,8 @@ Ordinary Canvas, 480×270 logical pixels. Ink blue water, pale sandstone, warm
 copper lanterns, deliberate low resolution silhouettes and short directional
 weapon trails. Enemy anticipation uses pose, shape and sound as well as color.
 HUD: named health/stamina bars, flask count, embers, weapon and current objective.
-Calm sparse bell/drone ambience grows in the boss court; separate music/effects
-volume. Flash and shake toggles default restrained. Original procedural art/audio
+Calm sparse bell/drone ambience persists across the journey; separate music/effects
+volume and event bell cues distinguish combat. Flash and shake toggles default restrained. Original procedural art/audio
 retain generation sources and provenance; reused fonts retain notices.
 
 Title (Continue/New game/settings/credits), contextual tutorial, pause, settings,

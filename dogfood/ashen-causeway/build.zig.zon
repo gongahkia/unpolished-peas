@@ -4,5 +4,5 @@
     .fingerprint = 0x340e91c4c3b5f682,
     .minimum_zig_version = "0.15.2",
     .dependencies = .{ .unpolished_peas = .{ .path = "../.." } },
-    .paths = .{ "build.zig", "build.zig.zon", "src", "assets", "DESIGN.md", "GUIDE.md", "FRICTION.md", "PROGRESS.md", "tools" },
+    .paths = .{ "build.zig", "build.zig.zon", "src", "assets", "DESIGN.md", "GUIDE.md", "FRICTION.md", "PROGRESS.md", "PROFILE.md", "ASSESSMENT-2026-11-10.md", "tools" },
 }

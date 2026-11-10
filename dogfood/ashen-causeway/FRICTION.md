@@ -9,8 +9,8 @@ report does not certify complete gameplay or platform validation.
 - Fixed-tick, game-owned combat is ordinary Zig and can be tested without a
   window. No RPG subsystem is requested from Peas.
 - Existing starter and dogfood projects provide public package build recipes,
-  portable save blobs, authored text and explicit audio cleanup. Integration
-  of those recipes into this game remains to be verified.
+  portable save blobs, authored text and explicit audio cleanup. Their integration is verified below through complete native/browser routes
+  and an archive consumer; broader hardware/pacing checks remain separate.
 
 ## Required issue record
 

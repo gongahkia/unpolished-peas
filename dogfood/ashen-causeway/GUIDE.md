@@ -172,3 +172,7 @@ one fixed tick per 166.7 ms wall delay (10% speed, slower during capture), savin
 a full readback every ten ticks. Tick ranges are deliberately tied to this route;
 update them when the reference input changes. These are visual inspection aids,
 not timing measurements or physical gameplay recordings.
+
+The [dated integration assessment](ASSESSMENT-2026-11-10.md) links the proof,
+remaining work and prioritized framework observations. Its status remains under
+review while first-play pacing and final acceptance are unresolved.
