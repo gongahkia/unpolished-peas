@@ -40,7 +40,7 @@ later HEAD was tested. Local artifacts live under `zig-out/diagnostics/`:
 
 | Evidence | Observed result | Boundary |
 | --- | --- | --- |
-| 32 deterministic tests, Debug and optimized runs | Combat boundaries, collision/AI, equipment/progression, saves/failures, repeated cleanup, winning and death/recovery routes pass | Headless controlled input; test fixtures are identified separately |
+| 33 deterministic tests, Debug and optimized runs | Combat boundaries, collision/AI, equipment/progression, saves/failures, repeated cleanup, winning and death/recovery routes pass | Headless controlled input; test fixtures are identified separately |
 | `ashen-external/result.json` | Fresh hashed archive fetch; outside-checkout test/package/web/native launch; notices/source retained | Loopback fixture, no published package |
 | `ashen-native/result.json` | 6,577-update winning route, ending save and second-process Continue; audio cleanup | Normalized replay through real SDL; CPU captures, no native GPU readback |
 | `ashen-browser-route/result.json` | Chrome 157/Firefox 158/Safari 18.6 full route and ending reload; six full RGBA comparisons per browser within tolerance 1 | Actual WebGL 2/Wasm/storage, synthetic replay/time; preview status unchanged |
@@ -56,8 +56,8 @@ are 1,922,822 and cleanup returns them to zero. PROFILE retains distributions,
 workload, a 14.487 ms unexplained native update outlier and allocation scope.
 These results do not justify a renderer rewrite or a universal frame-rate claim.
 
-No engine defect was demonstrated or engine fix made by this game. Two game bugs
-were fixed with regressions: repeated enemy interruption and ending-save retry.
+No engine defect was demonstrated or engine fix made by this game. Game defects were fixed with regressions: repeated enemy interruption,
+ending-save retry, missing healing poses and hidden upgrade rejection feedback.
 The principal remaining workaround is an optional public-replay-to-browser-wire
 bridge and test HTTP/RAF shim. It duplicates ABI offsets, expands this input to
 about 12 MB and stays out of shipping output. FRICTION records exact context,

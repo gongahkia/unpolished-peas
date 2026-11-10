@@ -478,3 +478,23 @@ root `zig-out/diagnostics/ashen-pose-regression/before.log`. The temporary copy
 used a canonical relative public package dependency and was removed. Two earlier
 ad-hoc probe attempts stopped at malformed path configuration before running tests;
 neither is evidence of a rendering failure or engine defect.
+
+## 2026-11-10 — explain unavailable upgrades in pause
+
+The pause menu hid the world-status row, and lantern/charm prerequisite guards
+returned silently. Added explicit reasons and a second visible pause-footer row,
+so successful, capped, unaffordable and prerequisite outcomes remain readable.
+A new normal-input test leaves the lantern, opens pause, selects Weapon Upgrade,
+checks the reason and unchanged level, then verifies visible message pixels.
+Reviewed `zig-out/evidence/poses/upgrade-away.png`; controls and reason fit on
+separate lines. Existing world tests now check guard explanations too.
+
+The static label extractor previously included test names as prepared UI copy.
+It now follows the modules' production-before-tests convention and excludes those
+names, retaining all actual labels. This removes unnecessary initialization
+storage; it is not an engine asset issue or a new runtime text system. The Debug
+`test web` command above passed 33 tests/all 15 steps before that catalog cleanup;
+its final rerun after cleanup is recorded next.
+
+Final post-catalog rerun: 33/33 tests and 15/15 test/web steps passed. Full input
+route tick counts remain 6,577 keyboard/mouse and 6,320 virtual controller.

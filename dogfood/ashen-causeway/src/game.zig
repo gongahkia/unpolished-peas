@@ -565,6 +565,7 @@ pub const Game = struct {
                 .death => "ENTER / E RETURNS TO YOUR CHECKPOINT",
                 else => "ARROWS CHOOSE - ENTER / E ACCEPT - ESCAPE RESUMES",
             }, 8, 247, white);
+            if (g.screen == .pause) g.text(c, g.state.message, 8, 258, gold);
         }
         if (g.save_failed) {
             c.fillRect(0, 34, 480, 12, ink);
@@ -832,4 +833,44 @@ test "healing commitment and weapon startup have distinct player poses" {
     try r.draw(0);
     try std.testing.expect(startup != playerPoseDigest(r));
     try poseEvidence(r, "sabre-active");
+}
+
+test "pause explains rejected upgrades in its visible footer" {
+    const r = try up.testSupport.HeadlessGameRunner(Game).initSeeded(std.testing.allocator, width, height, default_seed);
+    defer r.deinit();
+    var input = up.input.Input{};
+    input.set(.start, true);
+    try r.step(input.snapshot(), 1.0 / 60.0);
+    input.beginFrame();
+    input.set(.start, false);
+    input.set(.right, true);
+    for (0..40) |_| {
+        try r.step(input.snapshot(), 1.0 / 60.0);
+        input.beginFrame();
+    }
+    input.set(.right, false);
+    input.set(.cancel, true);
+    try r.step(input.snapshot(), 1.0 / 60.0);
+    input.beginFrame();
+    input.set(.cancel, false);
+    for (0..2) |_| {
+        input.set(.down, true);
+        try r.step(input.snapshot(), 1.0 / 60.0);
+        input.beginFrame();
+        input.set(.down, false);
+        try r.step(input.snapshot(), 1.0 / 60.0);
+        input.beginFrame();
+    }
+    input.set(.start, true);
+    try r.step(input.snapshot(), 1.0 / 60.0);
+    try std.testing.expectEqualStrings("Rest at a lantern before upgrading.", r.game.state.message);
+    try std.testing.expectEqual(@as(u8, 0), r.game.state.upgrade);
+    try r.draw(0);
+    const ink = Color.rgb(15, 28, 38);
+    var message_pixels: usize = 0;
+    for (261..269) |y| for (r.canvas.pixels[y * width + 8 .. y * width + 470]) |pixel| {
+        if (!std.meta.eql(pixel, ink)) message_pixels += 1;
+    };
+    try std.testing.expect(message_pixels > 0);
+    try poseEvidence(r, "upgrade-away");
 }

@@ -384,7 +384,10 @@ pub const World = struct {
         w.player.stamina = @min(w.player.stamina, w.player.max_stamina);
     }
     pub fn purchase(w: *World, health: bool) bool {
-        if (!w.nearLantern() or w.player.action != .idle or w.player.hp == 0) return false;
+        if (!w.nearLantern() or w.player.action != .idle or w.player.hp == 0) {
+            w.message = "Rest at a lantern before upgrading.";
+            return false;
+        }
         const level = if (health) &w.vitality else &w.upgrade;
         const cost = (@as(u32, level.*) + 1) * 50;
         if (level.* >= 3 or w.embers < cost) {
@@ -398,7 +401,14 @@ pub const World = struct {
         return true;
     }
     pub fn toggleCharm(w: *World) bool {
-        if (!w.reward or !w.nearLantern() or w.player.action != .idle or w.player.hp == 0) return false;
+        if (!w.reward) {
+            w.message = "Find the Cloister reliquary for the reed charm.";
+            return false;
+        }
+        if (!w.nearLantern() or w.player.action != .idle or w.player.hp == 0) {
+            w.message = "Return to a lantern to change your charm.";
+            return false;
+        }
         w.charm = !w.charm;
         w.applyEquipment();
         w.message = if (w.charm) "Reed charm: 25 more stamina, slower walking." else "Reed charm removed. Normal walking speed.";
@@ -543,11 +553,13 @@ test "lantern upgrades spend capped currency, alter capacity and charm trades sp
     try std.testing.expect(!w.purchase(false));
     w.pos.x = 140;
     try std.testing.expect(!w.purchase(true));
+    try std.testing.expectEqualStrings("Rest at a lantern before upgrading.", w.message);
     w.pos.x = 70;
     try std.testing.expect(w.purchase(true));
     try std.testing.expectEqual(@as(u8, 115), w.player.max_hp);
     try std.testing.expectEqual(@as(u8, 100), w.player.hp);
     try std.testing.expect(!w.toggleCharm());
+    try std.testing.expectEqualStrings("Find the Cloister reliquary for the reed charm.", w.message);
     w.reward = true;
     try std.testing.expect(w.toggleCharm());
     w.rest();

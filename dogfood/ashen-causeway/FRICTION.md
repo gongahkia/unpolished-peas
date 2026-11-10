@@ -201,3 +201,23 @@ feedback. Resolution: raised vial/crouch during healing, a small cross beginning
 at the actual healing tick, and a drawn-back weapon pose during attack startup.
 Recovery returns to idle. No timing, damage, stamina or input changes; all 32 tests
 pass. Canvas primitives suffice; no engine workaround/proposal or new subsystem.
+
+## Pause hid upgrade rejection feedback (resolved game UI bug)
+
+Task: buy upgrades/change a charm through pause and understand unavailable choices.
+Context: 022976b0, Intel macOS/Zig 0.15.2/Debug. Expected: a reason when away from
+a lantern, when missing the reward, or short of currency. Observed: early purchase/
+charm guards returned false without updating the message, and pause overwrote the
+world-message footer, hiding even successful/insufficient-currency feedback.
+Classification: medium game UI bug; public text/Canvas facilities worked correctly.
+
+Sources: World.purchase/toggleCharm and Game.draw's pause footer. Reproduction:
+Begin, move right beyond the lantern, Escape, Down twice, Enter. Resolution:
+actionable guard messages and a visible second pause-footer row. Existing rule
+tests assert rejection reasons; a normal-input GameProtocol regression executes
+that menu route and requires nonempty visible footer pixels. Run
+`ASHEN_POSE_EVIDENCE=zig-out/evidence/poses zig build test web -j2 --summary all`;
+`upgrade-away.png` was reviewed. No engine workaround/runtime facility needed.
+Status: resolved with regression coverage; relevant browser/native rereview follows
+as part of the final presentation checks. Prepared copy now excludes test names
+from its game-owned extraction helper; no decoding/layout enters drawing.

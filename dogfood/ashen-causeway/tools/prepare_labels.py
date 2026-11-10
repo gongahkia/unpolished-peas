@@ -5,7 +5,9 @@ import json
 root = Path(__file__).resolve().parents[1]
 labels = {'BELL', 'PASSAGE', 'E - REST', 'E - RING', 'E - LIFT', 'E - OPEN', 'Health', 'Stamina', 'Flasks', 'Embers'}
 for name in ('game.zig', 'world.zig'):
-    for literal in re.findall(r'"(?:[^"\\]|\\.)*"', (root / 'src' / name).read_text()):
+    # Production copy precedes tests in these game-owned modules.
+    source = (root / 'src' / name).read_text().split('\ntest ', 1)[0]
+    for literal in re.findall(r'"(?:[^"\\]|\\.)*"', source):
         value = json.loads(literal)
         if '{' not in value and (' ' in value or value.isupper()):
             labels.add(value)
