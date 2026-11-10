@@ -120,3 +120,42 @@ channel-unit tolerance and exact red-pixel contract. Screenshots/JSON live in th
 game's zig-out/evidence directory. Classification: documented facilities working,
 severity none, no workaround or engine API change. Full-game profiling remains
 separate from this zero-allocation text-draw check.
+
+## Complete replay through real hosts: developer bridge gap
+
+Task: reuse a successful public UPR fixed-input replay to check the same whole
+journey in SDL and browser hosts, preserving actual rendering/storage. Context:
+game baseline 665bb036, Zig 0.15.2, Intel macOS; native ReleaseFast and archive
+browser ReleaseSmall; Chromium 157, Firefox 158, Safari 18.6. Reproduction:
+GUIDE's external/native/export-browser-replay/browser-route commands. Evidence:
+root `zig-out/diagnostics/ashen-{external,native,browser-route}/result.json`,
+logs and six milestone PNG/readbacks per browser. All three completed the route,
+reloaded the ending, and matched full CPU reference frames at tolerance 1.
+
+Expected: reuse the recorded normalized input through an existing developer-host
+replay adapter. Observed: public parseInputReplay/applyFrame plus GameContext's
+borrowed input support the SDL wrapper directly, but the browser host has no
+comparable ready-made UPR injection adapter. A developer-only exporter maps
+Input.Snapshot to the existing browser wire ABI v2 (1,890 bytes/frame); the test
+server wraps input imports and schedules synthetic RAF callbacks. Sources:
+`src/export_browser_replay.zig`, `tools/browser-route.mjs`, public
+`up.preview.developer.parseInputReplay`, `Input.Snapshot.extended.encode`, and
+engine `src/browser/input_snapshot.zig`, `src/browser/input.mjs`. No backend
+imports enter game rules and no engine defect is inferred.
+
+Classification: missing developer-tooling convenience, low severity for players,
+medium verification maintenance cost. Workaround: roughly 120 lines of Zig
+export/reference generation and a browser test shim, with about 12 MB of expanded
+wire input for this route. It duplicates ABI field offsets and must follow wire
+format changes. Runtime cost is restricted to optional verification builds and
+test-server responses; the shipping game/bundle has none of it. Synthetic time
+makes these checks unsuitable for frame-rate measurement or trusted-input claims.
+
+Proposed improvement: a reusable preview/test-host adapter that accepts the public
+replay format or a canonical Snapshot-to-browser-wire encoder. Keep it optional,
+reuse existing deterministic input semantics, and retain the ordinary shipping
+host. This is a tooling proposal, not a request for an RPG framework or new input
+model. Status: integration verified with the game-owned bridge; proposal remains
+open. Existing renderer diagnostics, independent probes and compareReference
+readbacks were reusable unchanged and removed the need for a second renderer test
+system. Trusted input/audio smoke tests remain separate.

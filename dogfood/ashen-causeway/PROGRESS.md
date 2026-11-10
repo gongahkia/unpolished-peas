@@ -335,3 +335,53 @@ pacing.
 
 Final optimized rerun after the heading/selection corrections: all 12 test/package
 steps and 31 tests passed. Final Debug/web rerun: all 15 steps and 31 tests passed.
+
+
+## 2026-11-10 — archive consumer and complete real-host routes
+
+Game baseline 665bb036; no gameplay changes in this verification increment.
+`python3 script/test_ashen_causeway_external.py` passed from a fresh consumer
+cache outside the checkout, with a real loopback archive fetch and computed Zig
+package hash. The copied game passed 31 tests, native packaging and a 120-frame
+SDL launch, plus browser compilation. Authored source hashes and retained notices
+were checked. `zig-out/diagnostics/ashen-external/result.json` records archive
+SHA256, tree daf5c2468761f69bc8598a10c3deec6930206483, commands and output hashes.
+The later optional verification build steps were added after that archive snapshot;
+this run establishes the production game/public package boundary at the stated tree.
+
+`python3 script/test_ashen_causeway_native.py` passed a real SDL journey with
+6,577 normalized keyboard/mouse updates, checkpoint 2, upgrade 1 and ending saved,
+then a new process loaded boss defeat, equipment and full checkpoint resources.
+Both processes verified audio playback cleanup. Native ReleaseFast/Zig 0.15.2,
+Intel macOS, SDL GPU/MSL, 1920×1080 framebuffer and 480×270 logical Canvas.
+Evidence: `zig-out/diagnostics/ashen-native/result.json`, route/continue logs and
+six PNGs. Boss windup/shock and continued-ending captures from real SDL callbacks were reviewed;
+these are CPU Canvas captures, not native GPU readback or physical input testing.
+The initial run suppressed the app-data path log, so its exact disposable UUID
+namespace was removed manually after success. The helper now enables that log
+and guards automatic cleanup by the reported parent and exact generated UUID.
+
+After exporting the same public replay via `zig build export-browser-replay`
+(the exact command is in GUIDE), ran:
+
+```
+UP_SAFARI_WEBDRIVER_URL=http://127.0.0.1:41245 node dogfood/ashen-causeway/tools/browser-route.mjs --browsers chromium,firefox,safari
+```
+
+Chromium 157.0.8103.39, Firefox 158.0 and real Safari 18.6 passed the complete
+6,577-update route using the archive-built Wasm, then reloaded and continued the
+completed save. Each passed five route milestone readbacks plus the continued
+frame, comparing all 480×270 RGBA channels to native CPU references with tolerance
+1. Independent strict red-pixel probes, ready WebGL2 diagnostics, zero protocol
+failures and unchanged bundle SHA were required. Reports and captures:
+`zig-out/diagnostics/ashen-browser-route`. The Safari shock capture was visually
+reviewed after the run; windup/shock and ending were also reviewed from
+the SDL run. The owned Safari service was stopped. Test-origin saves were restored.
+
+The browser replay advances synthetic RAF timestamps and injects normalized
+snapshots through the existing input wire ABI. It is real Wasm/renderer/storage
+integration, not trusted physical input or performance evidence. Earlier browser
+smokes cover trusted keyboard/pointer/audio separately. No renderer tolerances or
+physical IME claims changed. The public replay bridge's maintenance cost is
+recorded in FRICTION. Pacing, continuous motion review, whole-game profiling,
+reference review and final assessment remain open; tests do not establish polish.
