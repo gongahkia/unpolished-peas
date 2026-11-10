@@ -42,4 +42,5 @@ pub fn main() !void {
 
 test {
     _ = @import("game.zig");
+    _ = @import("route_protocol.zig");
 }
