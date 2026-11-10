@@ -165,7 +165,7 @@ system. Trusted input/audio smoke tests remain separate.
 Task: identify real RPG CPU/resource costs before selecting optional rendering.
 Context/reproduction/evidence: PROFILE.md and root
 `zig-out/diagnostics/ashen-profile`, game baseline 471a17dd, Intel macOS15.7.7,
-Zig0.15.2/ReleaseFast. Public Canvas, HeadlessGameRunner, Audio.mix and ordinary
+Zig 0.15.2/ReleaseFast. Public Canvas, HeadlessGameRunner, Audio.mix and ordinary
 SDL host were sufficient. Existing `examples/render_capacity_game.zig`,
 `src/render_benchmark.zig` and the native UP_NATIVE_TIMING_SAMPLES reporter
 provided the observation pattern. Optional game-owned wrappers retain clocks and
@@ -182,3 +182,22 @@ defect or API change proposed. Practical impact: no demonstrated rendering
 bottleneck at this workload/resolution. No workaround beyond optional developer
 instrumentation; no shipping runtime cost. Larger capacity/other hardware and
 browser performance remain outside these observations.
+
+## Healing commitment lacked a distinct pose (resolved game presentation gap)
+
+Task: make the vulnerable 60-tick healing action readable alongside its flask cost.
+Context: game rendering at 54de0808, Intel macOS, Zig 0.15.2/Debug, normal
+GameProtocol input. Expected: visible flask preparation followed by the heal cue
+at age 36. Observed in Game.draw: healing shared the idle player pose; only the
+HUD flask decrement communicated acceptance. Classification: low-severity game
+presentation gap, no missing Canvas/animation facility. Sources: src/game.zig's
+player drawing, combat.Fighter's existing healing timings.
+
+Reproduce the ordinary-input pose sequence with
+`ASHEN_POSE_EVIDENCE=zig-out/evidence/poses zig build test -j2` in the game directory.
+PNG evidence: idle, healing-hold/release, sabre-startup/active. The focused test
+compares only the player region rather than accepting a changed HUD as pose
+feedback. Resolution: raised vial/crouch during healing, a small cross beginning
+at the actual healing tick, and a drawn-back weapon pose during attack startup.
+Recovery returns to idle. No timing, damage, stamina or input changes; all 32 tests
+pass. Canvas primitives suffice; no engine workaround/proposal or new subsystem.

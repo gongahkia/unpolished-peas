@@ -447,3 +447,34 @@ limits. Corrected the design's unimplemented adaptive-music wording to the actua
 persistent ambient score plus combat cues; no required audio feature is removed.
 Retained PROFILE/assessment in the game package manifest so GUIDE links survive
 packaging. No README, license, renderer contract or platform support status changed.
+
+## 2026-11-10 — accepted-action pose review
+
+Source/ordinary-input review found healing had no distinct player pose during its
+60-tick vulnerable commitment. Added a held vial and slight crouch, then a small
+cross at age 36 (the existing heal tick), clearing at recovery completion. Attack
+startup now visibly draws the weapon back and raises the player pose before the
+existing active reach/trail. No combat, progression or input timing changed.
+
+`ASHEN_POSE_EVIDENCE=zig-out/evidence/poses zig build test web -j2 --summary all`
+passed 32 tests and all 15 steps. After moving the capture sequence a short distance
+from the lantern, `ASHEN_POSE_EVIDENCE=zig-out/evidence/poses zig build test -j2 --summary all`
+passed 32 tests/all 7 steps. Reviewed healing-hold, healing-release, sabre-startup
+and sabre-active actual CPU captures; the cue reads separately from the lantern.
+The regression hashes only a small player region, so a changing flask HUD cannot
+mask a missing pose. It also checks the cue at 36 and return to idle at 60.
+
+The external consumer rerun before this visual-only increment also passed against
+54de0808/tree a3a5f5d1b514d0c8a1355a26cb31cfd4b1888aae, with 31 tests. Its exact report is root
+`zig-out/diagnostics/ashen-external-final/result.json`; production Wasm matched the
+earlier archive hash. Updated pose references have now been exported; real-host
+validation of the new presentation is the next check.
+
+Regression discrimination: copied the current game into a temporary project,
+restored 54de0808's Game rendering while retaining the new ordinary-input pose
+test, and ran `zig build test -j2 --summary all`. It failed specifically at
+`idle != holding`; current rendering passes. The retained failed-test log is
+root `zig-out/diagnostics/ashen-pose-regression/before.log`. The temporary copy
+used a canonical relative public package dependency and was removed. Two earlier
+ad-hoc probe attempts stopped at malformed path configuration before running tests;
+neither is evidence of a rendering failure or engine defect.

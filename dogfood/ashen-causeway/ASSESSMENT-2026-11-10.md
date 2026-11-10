@@ -33,34 +33,34 @@ or general high-resolution throughput. No new scene/ECS/RPG framework was needed
 
 ## Evidence and limits
 
-Game behavior is unchanged since 665bb036; later commits add verification,
-profiling and review tools. Exact reproducible commands are in GUIDE/PROFILE.
+Combat/progression rules are unchanged since 665bb036; later commits add
+verification/profiling tools and reviewed healing/attack preparation poses. Exact reproducible commands are in GUIDE/PROFILE.
 The archive report records its actual tree and hashes rather than implying a
 later HEAD was tested. Local artifacts live under `zig-out/diagnostics/`:
 
 | Evidence | Observed result | Boundary |
 | --- | --- | --- |
-| 31 deterministic tests, Debug and optimized runs | Combat boundaries, collision/AI, equipment/progression, saves/failures, repeated cleanup, winning and death/recovery routes pass | Headless controlled input; test fixtures are identified separately |
+| 32 deterministic tests, Debug and optimized runs | Combat boundaries, collision/AI, equipment/progression, saves/failures, repeated cleanup, winning and death/recovery routes pass | Headless controlled input; test fixtures are identified separately |
 | `ashen-external/result.json` | Fresh hashed archive fetch; outside-checkout test/package/web/native launch; notices/source retained | Loopback fixture, no published package |
 | `ashen-native/result.json` | 6,577-update winning route, ending save and second-process Continue; audio cleanup | Normalized replay through real SDL; CPU captures, no native GPU readback |
-| `ashen-browser-route/result.json` | Chrome157/Firefox158/Safari18.6 full route and ending reload; six full RGBA comparisons per browser within tolerance1 | Actual WebGL2/Wasm/storage, synthetic replay/time; preview status unchanged |
+| `ashen-browser-route/result.json` | Chrome 157/Firefox 158/Safari 18.6 full route and ending reload; six full RGBA comparisons per browser within tolerance 1 | Actual WebGL 2/Wasm/storage, synthetic replay/time; preview status unchanged |
 | Game `zig-out/evidence` browser smokes | Trusted keys/pointer, menus, settings/weapon reload, rejected writes/retry, nonzero finite accepted audio | Does not replace a physical controller/IME/speaker assessment |
 | `ashen-motion-review/result.json` | Slowed windup/approach and dodge/shock samples plus full route/reload | Sampled automated visual inspection; not every animation/manual play |
 | `ashen-profile/result.json` and final rerun | Three CPU routes, six SDL scene windows, bounded samples, cleanup to zero | One Intel Mac; no GPU-completion/display/JS allocation measurement |
 
 Native ordinary draw medians were 0.209–0.237 ms; phase-two/shock 0.303–0.369 ms,
-with presentation-paced frame medians near16.7 ms. A later one-round rerun is
+with presentation-paced frame medians near 16.7 ms. A later one-round rerun is
 reported separately. Complete-route drawing/mixing makes zero tracked allocations;
-updates make31 requests totaling2,530 bytes after init. Peak tracked live bytes
-are1,922,822 and cleanup returns them to zero. PROFILE retains distributions,
-workload, a14.487 ms unexplained native update outlier and allocation scope.
+updates make 31 requests totaling 2,530 bytes after init. Peak tracked live bytes
+are 1,922,822 and cleanup returns them to zero. PROFILE retains distributions,
+workload, a 14.487 ms unexplained native update outlier and allocation scope.
 These results do not justify a renderer rewrite or a universal frame-rate claim.
 
 No engine defect was demonstrated or engine fix made by this game. Two game bugs
 were fixed with regressions: repeated enemy interruption and ending-save retry.
 The principal remaining workaround is an optional public-replay-to-browser-wire
 bridge and test HTTP/RAF shim. It duplicates ABI offsets, expands this input to
-about12 MB and stays out of shipping output. FRICTION records exact context,
+about 12 MB and stays out of shipping output. FRICTION records exact context,
 reproduction, cost and proposed resolution.
 
 ## Priorities supported by this exercise

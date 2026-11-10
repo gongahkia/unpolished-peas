@@ -491,14 +491,29 @@ pub const Game = struct {
         };
         const player_color = if (g.settings.flash and g.state.hurt_feedback > 0) white else if (g.state.player.invulnerable()) gold else Color.rgb(159, 211, 208);
         const bob: f32 = if (g.walking and g.state.player.action == .idle and (g.stride / 8) % 2 == 0) 1 else 0;
-        const crouch: f32 = if (g.state.player.action == .dodge) 3 else 0;
+        const healing = g.state.player.action == .heal;
+        const t = combat.spec(g.state.player.weapon, g.state.player.action);
+        const preparing = (g.state.player.action == .light or g.state.player.action == .heavy) and g.state.player.age < t.startup;
+        const crouch: f32 = if (g.state.player.action == .dodge) 3 else if (healing) 2 else if (preparing) -1 else 0;
         g.circle(c, g.state.pos.add(.{ .y = 5 }), 10, ink);
         g.rect(c, .{ .x = g.state.pos.x - 6, .y = g.state.pos.y - 3 + bob + crouch, .w = 12, .h = 11 - crouch }, player_color);
         g.circle(c, g.state.pos.add(.{ .y = -6 + bob + crouch }), 4, white);
-        const t = combat.spec(g.state.player.weapon, g.state.player.action);
-        const weapon_length: f32 = if (g.state.player.active()) @floatFromInt(t.reach) else if (g.state.player.weapon == .spear) 20 else 13;
+        const resting_length: f32 = if (g.state.player.weapon == .spear) 20 else 13;
+        const weapon_length: f32 = if (g.state.player.active()) @floatFromInt(t.reach) else if (preparing) resting_length * 0.55 else resting_length;
         const tip = g.state.pos.add(g.state.facing.scale(weapon_length));
         g.line(c, g.state.pos, tip, if (g.state.player.active()) white else stone);
+        if (healing) {
+            // Raise a visible vial during the vulnerable commitment. The small
+            // cross appears at the same age as healing, then leaves at recovery.
+            const vial = g.state.pos.add(.{ .x = 7, .y = -10 });
+            g.rect(c, .{ .x = vial.x - 2, .y = vial.y - 3, .w = 4, .h = 6 }, gold);
+            g.line(c, vial.add(.{ .x = -1, .y = -4 }), vial.add(.{ .x = 1, .y = -4 }), white);
+            if (g.state.player.age >= 36) {
+                const mark = g.state.pos.add(.{ .y = -21 });
+                g.line(c, mark.add(.{ .x = -3 }), mark.add(.{ .x = 3 }), gold);
+                g.line(c, mark.add(.{ .y = -3 }), mark.add(.{ .y = 3 }), gold);
+            }
+        }
         const side = Vec{ .x = -g.state.facing.y, .y = g.state.facing.x };
         g.line(c, g.state.pos.add(g.state.facing.scale(8)).add(side.scale(-3)), g.state.pos.add(g.state.facing.scale(8)).add(side.scale(3)), gold);
         if (g.state.player.active()) {
@@ -742,4 +757,79 @@ test "audio assets decode volume zero is silent and release invalidates sources"
         try r.audio.mix(&samples);
         for (samples) |sample| try std.testing.expectEqual(@as(f32, 0), sample.left);
     }
+}
+
+fn playerPoseDigest(r: anytype) u64 {
+    const x: usize = @intFromFloat(r.game.state.pos.x - r.game.camera.x);
+    const y: usize = @intFromFloat(r.game.state.pos.y - r.game.camera.y);
+    var digest = std.hash.Wyhash.init(0);
+    for (y - 27..y + 18) |row| digest.update(std.mem.sliceAsBytes(r.canvas.pixels[row * width + x - 16 .. row * width + x + 18]));
+    return digest.final();
+}
+fn poseEvidence(r: anytype, label: []const u8) !void {
+    const allocator = std.testing.allocator;
+    const output = std.process.getEnvVarOwned(allocator, "ASHEN_POSE_EVIDENCE") catch return;
+    defer allocator.free(output);
+    try std.fs.cwd().makePath(output);
+    const path = try std.fmt.allocPrint(allocator, "{s}/{s}.png", .{ output, label });
+    defer allocator.free(path);
+    try r.canvas.writePngFile(path);
+}
+test "healing commitment and weapon startup have distinct player poses" {
+    const r = try up.testSupport.HeadlessGameRunner(Game).initSeeded(std.testing.allocator, width, height, default_seed);
+    defer r.deinit();
+    var input = up.input.Input{};
+    input.set(.start, true);
+    try r.step(input.snapshot(), 1.0 / 60.0);
+    input.beginFrame();
+    input.set(.start, false);
+    input.set(.right, true);
+    for (0..16) |_| {
+        try r.step(input.snapshot(), 1.0 / 60.0);
+        input.beginFrame();
+    }
+    input.set(.right, false);
+    try r.step(input.snapshot(), 1.0 / 60.0);
+    try r.draw(0);
+    const idle = playerPoseDigest(r);
+    try poseEvidence(r, "idle");
+    input.beginFrame();
+    input.set(.start, false);
+    input.setPhysical(.h, true, false);
+    try r.step(input.snapshot(), 1.0 / 60.0);
+    try std.testing.expectEqual(combat.Action.heal, r.game.state.player.action);
+    try r.draw(0);
+    const holding = playerPoseDigest(r);
+    try std.testing.expect(idle != holding);
+    try poseEvidence(r, "healing-hold");
+    input.beginFrame();
+    input.setPhysical(.h, false, false);
+    for (0..36) |_| {
+        try r.step(input.snapshot(), 1.0 / 60.0);
+        input.beginFrame();
+    }
+    try r.draw(0);
+    try std.testing.expectEqual(@as(u16, 36), r.game.state.player.age);
+    try std.testing.expect(holding != playerPoseDigest(r));
+    try poseEvidence(r, "healing-release");
+    for (0..24) |_| try r.step(input.snapshot(), 1.0 / 60.0);
+    try r.draw(0);
+    try std.testing.expectEqual(combat.Action.idle, r.game.state.player.action);
+    try std.testing.expectEqual(idle, playerPoseDigest(r));
+    input.setPhysical(.j, true, false);
+    try r.step(input.snapshot(), 1.0 / 60.0);
+    try r.draw(0);
+    const startup = playerPoseDigest(r);
+    try std.testing.expect(startup != idle);
+    try poseEvidence(r, "sabre-startup");
+    input.beginFrame();
+    input.setPhysical(.j, false, false);
+    for (0..7) |_| {
+        try r.step(input.snapshot(), 1.0 / 60.0);
+        input.beginFrame();
+    }
+    try std.testing.expect(r.game.state.player.active());
+    try r.draw(0);
+    try std.testing.expect(startup != playerPoseDigest(r));
+    try poseEvidence(r, "sabre-active");
 }
