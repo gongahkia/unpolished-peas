@@ -403,3 +403,26 @@ render passes. No GPU-completion or browser-performance measurement is inferred.
 An isolated 14.487 ms native update aggregate remains unattributed. No bottleneck
 justifies a rendering redesign. The exact disposable profile namespace was removed
 by the guarded helper and its absence checked after the run.
+
+## 2026-11-10 — slowed combat presentation sample
+
+`node dogfood/ashen-causeway/tools/browser-route.mjs --browsers chromium --motion --output zig-out/diagnostics/ashen-motion-review`
+passed the full archive-built route, six strict reference comparisons and ending
+reload again. The optional test-only mode steps one simulation tick per 166.7 ms
+wall delay through ticks [5580,5660) and [6250,6330), capturing every ten ticks.
+The 16 full-frame readbacks sample approach/windup and dodge/shock expansion at
+nominal 10% playback speed (capture adds extra wall delay). No shipping changes.
+
+Viewed captures 5580/5630: player approach/camera position and the boss silhouette
+remain readable; the fan outline precedes release with a raised anticipation
+pose. Viewed 6260/6290/6320: dashed reach boundaries plus named shock cue precede
+the moving bright band; the player changes to a crouched dodge pose, crosses into
+the safe center, and the band continues outward without a damage flash. HUD and
+boss label retain stable positions through the sequence. This is sampled automated
+visual review, not physical/manual play or an inspection of every animation.
+Healing/stagger and every archetype's continuous motion are not covered by these
+two slow excerpts. No additional presentation defect was demonstrated here.
+
+Presentation review remains provisional for the complete game pending the final
+encounter/pacing assessment. Resource/CPU measurements are now recorded in
+PROFILE.md; no universal performance or enjoyment claim follows.

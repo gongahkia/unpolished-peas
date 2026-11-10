@@ -5,15 +5,17 @@ import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import {resolve,join,extname,sep} from 'node:path';
 import {parseArgs} from 'node:util';
 import {createHash} from 'node:crypto';
+import {setTimeout as delay} from 'node:timers/promises';
 import {adapter} from '../../../script/browser-authoring/adapters.mjs';
 import {frame,compareReference} from '../../../script/browser-authoring/checks.mjs';
 import {probeWebGlCapture,validateWebGlReadback,validateRenderer} from '../../../script/safari_webdriver.mjs';
-const {values}=parseArgs({options:{bundle:{type:'string'},input:{type:'string'},output:{type:'string'},browsers:{type:'string',default:'chromium,firefox'}}});
+const {values}=parseArgs({options:{motion:{type:'boolean',default:false},bundle:{type:'string'},input:{type:'string'},output:{type:'string'},browsers:{type:'string',default:'chromium,firefox'}}});
 const gameRoot=resolve(new URL('..',import.meta.url).pathname);
 const bundle=resolve(values.bundle ?? join(gameRoot,'../../zig-out/diagnostics/ashen-external/web'));
 const input=resolve(values.input ?? join(gameRoot,'zig-out/evidence/browser-route-input'));
 const out=resolve(values.output ?? join(gameRoot,'../../zig-out/diagnostics/ashen-browser-route'));
 await mkdir(out,{recursive:true});
+const motionRanges=[[5580,5660],[6250,6330]];
 const meta=JSON.parse(await readFile(join(input,'route.json'),'utf8'));
 assert.equal(meta.abi_version,2);assert.equal(meta.frame_bytes,1890);
 const sha=async path=>createHash('sha256').update(await readFile(path)).digest('hex');
@@ -62,7 +64,7 @@ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const base='http://127.0.0.1:'+server.address().port;
 try{
   for(const browser of values.browsers.split(',')){
-    const driver=adapter(browser);const result={browser,status:'running',frames:[]};report.results.push(result);await persist();
+    const driver=adapter(browser);const result={browser,status:'running',frames:[],motion:[]};report.results.push(result);await persist();
     const directory=join(out,browser);await mkdir(directory,{recursive:true});let originalSaves=null;
     try{
       await driver.open();result.version=driver.version;
@@ -76,9 +78,19 @@ try{
       let next=0;
       for(const milestone of meta.milestones){
         while(next<=milestone.tick){
-          const end=Math.min(milestone.tick+1,next+90);
+          const slowed=values.motion && motionRanges.some(([start,end])=>next>=start && next<end);
+          let end=Math.min(milestone.tick+1,next+(slowed?1:90));
+          if(values.motion) for(const [start] of motionRanges) if(next<start) end=Math.min(end,start);
           const state=await driver.evaluate(({from,to})=>{for(let i=from;i<to;i++)window.__ashenAdvance(i*1000/60);return {inputs:window.__ashenInputIndex,failure:window.unpolishedPeas.runtime.up_browser_protocol_failure_phase(),render:window.unpolishedPeas.runtime.up_browser_canvas_render_status()};},{from:next,to:end});
-          assert.equal(state.inputs,end);assert.equal(state.failure,-1);assert.equal(state.render,0);next=end;
+          assert.equal(state.inputs,end);assert.equal(state.failure,-1);assert.equal(state.render,0);
+          if(slowed){
+            if(next%10===0){
+              await frame(driver,directory,'motion-'+next,meta.width,meta.height);
+              result.motion.push({tick:next,wallStepMs:1000/6,fixedStepMs:1000/60});
+            }
+            await delay(1000/6);
+          }
+          next=end;
         }
         const actual=await frame(driver,directory,milestone.label,meta.width,meta.height);
         await compareReference(actual,join(input,milestone.label+'.rgba'));

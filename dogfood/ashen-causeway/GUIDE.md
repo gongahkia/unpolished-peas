@@ -159,3 +159,16 @@ build steps and add no replay bridge to the shipped game.
 short real SDL ordinary/boss measurements, with exact reproduction commands and
 boundaries. The optional `build-profiling`/`profile-route` targets do not change
 normal run/package output.
+
+For a slowed combat capture review, add `--motion` to `tools/browser-route.mjs`
+and select one browser. For example, from the engine root:
+
+```
+node dogfood/ashen-causeway/tools/browser-route.mjs --browsers chromium --motion --output zig-out/diagnostics/ashen-motion-review
+```
+
+The current reference route's windup/approach and phase-two shock excerpts advance
+one fixed tick per 166.7 ms wall delay (10% speed, slower during capture), saving
+a full readback every ten ticks. Tick ranges are deliberately tied to this route;
+update them when the reference input changes. These are visual inspection aids,
+not timing measurements or physical gameplay recordings.
