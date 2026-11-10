@@ -90,3 +90,53 @@ and boss phase mechanics; versioned saves and settings; meaningful upgrades and
 optional equipment; a complete ending; authored audiovisual presentation and
 polish; full-route input/replay evidence; outside-checkout archive consumer;
 Safari/reloads/failure injection; measurements; dated assessment and final audit.
+
+## Persistence, equipment and menus — 2026-11-10
+
+Added explicit forty-byte `ASH1`/version-1 saves through the public SaveStore.
+Byte fields and checksum exclude raw struct memory, clocks, health, active attacks
+and enemy state. Continue restores the last checkpoint and full resources;
+permanent progression, currency/drop, weapon/equipment, ending and settings persist.
+Invalid data is rejected, kept intact and explained; only explicit New Game can
+replace an unreadable slot. Rejected writes show a persistent warning and retain
+old bytes. Settings edits before replacing an unreadable journey cannot overwrite
+it. Pause Save/Retry permits another attempt without restarting.
+
+Implemented three capped damage upgrades, three vitality upgrades, the optional
+flask/charm reward and its stamina-versus-walking-speed tradeoff. Added menu flows
+for title/Continue/New Game, settings, pause/upgrades, death, victory and credits.
+After boss defeat, a second interaction at the third bell triggers the beacon
+ending. Full-route reachability and boss phase-two shock rings remain open.
+Settings preferences persist; audio/flash/shake output remains pending, as the
+guide states. This is not a finished audiovisual experience.
+
+The browser smoke script now verifies actual reload/Continue, inspects the saved
+weapon byte, rejects writes by temporarily throwing from localStorage.setItem,
+checks exact preservation of the old value, then restores storage and retries
+through the real pause menu. Chromium 157.0.8103.39 and Firefox 158.0 passed,
+including nonzero WebGL readback, zero GL errors and no page errors. Save-failure
+PNG inspection confirmed the warning was visible above gameplay. Art remains
+prototype geometry and debug text. Browser matrix reports/PNGs remain under
+`zig-out/evidence` in the game directory. This is not full gameplay/renderer parity
+or Safari/native-reload evidence.
+
+The first browser retry assertion sent pause/down/confirm within one fixed tick.
+The host correctly accumulated the input; the game entered pause and did not also
+execute a second menu action in that update. The harness now spaces trusted key
+commands over ticks, following the existing authoring adapter's cadence. This is
+a tooling correction, not a demonstrated framework defect.
+
+Final checks for this tranche, from the game directory:
+
+```
+zig build test web -j2 --summary all
+zig build test -Doptimize=ReleaseFast -j2 --summary all
+```
+
+Both passed 17 tests; Debug/web completed all 15 build steps and ReleaseFast all
+7. Coverage includes save round trips and transient resets, every truncated
+length and single-byte mutation, invalid fields with a recomputed checksum,
+failed-write preservation/retry and visible-warning drawing, corrupt-save
+retention, New Game settings preservation, all menu draw states, capped upgrade
+spending/capacities, charm mobility tradeoff and beacon victory gating. These
+fixture tests do not stand in for a complete normal-input winning route.

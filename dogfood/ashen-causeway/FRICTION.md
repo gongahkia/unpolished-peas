@@ -31,3 +31,20 @@ Physical-key/pointer/controller ActionMap bindings required no backend imports.
 Headless GameProtocol cleanup exercised three lifecycles with the test allocator.
 Classification: facilities working as documented; no workaround or engine change.
 See PROGRESS.md for browser readback smoke evidence and its limits.
+
+## Save integration — 2026-11-10
+
+Task: persist a complete RPG checkpoint/equipment record and recover after rejected
+writes. Reproduce from the game directory with `zig build test web -j2`, serve
+`zig-out/web` on loopback port 8114 and run from the engine root:
+`PEAS_SMOKE_BROWSERS=chromium,firefox node dogfood/ashen-causeway/tools/browser-smoke.mjs`.
+Context: Intel macOS, Zig 0.15.2, native Debug/browser ReleaseSmall, base c09375b1.
+Public APIs: GameContext.save_data, SaveStore.read/write, InMemorySaveStore;
+game sources: src/save.zig and Game.load/persist in src/game.zig.
+Expected/observed: a failed replacement retains the good blob, reads and retry
+continue to work. Native allocator-failure tests and real Chromium/Firefox quota
+injection confirmed this behavior; actual reload restored the selected weapon.
+Evidence: game zig-out/evidence/browser-smoke.json and save-failed PNGs, plus the
+deterministic tests. Category: supported facility working as documented; severity
+none, workaround/cost none. Game-owned byte encoding, validation and warning UI
+remain ordinary authoring responsibilities. No serialization engine is proposed.

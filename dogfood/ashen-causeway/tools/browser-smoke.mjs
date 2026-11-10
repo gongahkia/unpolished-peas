@@ -10,6 +10,7 @@ for (const name of (process.env.PEAS_SMOKE_BROWSERS ?? 'chromium').split(',')) {
   const browser=await (name==='firefox'?firefox:chromium).launch(name==='chromium'?{channel:'chrome',headless:true,args:['--enable-webgl','--use-angle=swiftshader','--enable-unsafe-swiftshader']}:{headless:true});
   try {
     const page=await browser.newPage({viewport:{width:1100,height:760}});
+    const press=async key=>{await page.keyboard.press(key,{delay:30});await page.waitForTimeout(60);};
     const errors=[];page.on('pageerror',e=>errors.push(String(e)));
     await page.goto(process.env.PEAS_GAME_URL ?? 'http://127.0.0.1:8114/?renderer=webgl2');
     await page.waitForFunction(()=>window.unpolishedPeas?.rendererDiagnostic?.context_status==='ready');
@@ -29,14 +30,35 @@ for (const name of (process.env.PEAS_SMOKE_BROWSERS ?? 'chromium').split(',')) {
       delete value.png;return value;
     };
     const title=await capture('title');
-    await page.keyboard.press('Enter');await page.waitForTimeout(100);
+    await press('Enter');await page.waitForTimeout(100);
     const play=await capture('play');assert.notEqual(title.sum,play.sum);
     await page.keyboard.down('ArrowRight');await page.waitForTimeout(650);await page.keyboard.up('ArrowRight');
-    await page.keyboard.press('q');await page.keyboard.press('j');await page.waitForTimeout(150);
+    await press('q');await press('j');await page.waitForTimeout(150);
     const action=await capture('action');assert.notEqual(play.sum,action.sum);
-    await page.keyboard.press('Escape');await page.waitForTimeout(100);const pause=await capture('pause');assert.notEqual(action.sum,pause.sum);
+    await press('Escape');await page.waitForTimeout(100);const pause=await capture('pause');assert.notEqual(action.sum,pause.sum);
+    // Verify an actual page reload, then a rejected storage write and retry.
+    const readSave=()=>page.evaluate(()=>{
+      const key=Object.keys(localStorage).find(k=>k.endsWith('journey-v1'));
+      if(!key) throw new Error('journey save missing');
+      const raw=localStorage.getItem(key);
+      const bytes=Array.from(atob(raw.slice(6)),c=>c.charCodeAt(0));
+      return {key,raw,weapon:bytes[6]};
+    });
+    const saved=await readSave();assert.equal(saved.weapon,1);
+    await page.reload();await page.waitForFunction(()=>window.unpolishedPeas?.rendererDiagnostic?.context_status==='ready');await canvas.focus();
+    await press('Enter');await page.waitForTimeout(100);
+    assert.equal((await readSave()).raw,saved.raw);
+    const continued=await capture('continued');
+    await page.evaluate(()=>{window.restoreStorageWrite=Storage.prototype.setItem;Storage.prototype.setItem=function(){throw new DOMException('test quota','QuotaExceededError');};});
+    await press('q');await page.waitForTimeout(100);
+    assert.equal((await readSave()).raw,saved.raw);
+    const rejected=await capture('save-failed');assert.notEqual(rejected.sum,continued.sum);
+    await page.evaluate(()=>{Storage.prototype.setItem=window.restoreStorageWrite;});
+    await press('Escape');await press('ArrowDown');await press('Enter');await page.waitForTimeout(100);
+    const retried=await readSave();assert.equal(retried.weapon,0);assert.notEqual(retried.raw,saved.raw);
+    const retry=await capture('save-retried');
     assert.deepEqual(errors,[]);
-    results.push({browser:name,version:browser.version(),title,play,action,pause,errors,coverage:'Trusted keyboard smoke and nonzero WebGL readback, not full route or parity validation'});
+    results.push({browser:name,version:browser.version(),title,play,action,pause,continued,rejected,retry,persistence:{reload:true,rejectedWritePreserved:true,retry:true},errors,coverage:'Trusted keyboard smoke and nonzero WebGL readback, not full route or parity validation'});
   } finally {await browser.close();}
 }
 await writeFile(new URL('browser-smoke.json',out),JSON.stringify(results,null,2));
