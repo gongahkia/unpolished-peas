@@ -1,6 +1,7 @@
 # Ashen Causeway
 
-Design established 2026-11-10, before implementation. Status: in development.
+Design established 2026-11-10, before implementation. Status: implemented and reviewed as a bounded developer build; see the
+[November 11 assessment](ASSESSMENT-2026-11-11.md) for proof and limits.
 
 The last ferryman carries a living coal through a drowned monastery to rekindle
 its beacon. Ring three mooring bells, open the return lift, and defeat the Bell
@@ -74,12 +75,13 @@ retain generation sources and provenance; reused fonts retain notices.
 
 Title (Continue/New game/settings/credits), contextual tutorial, pause, settings,
 death with recovery explanation, victory and credits are required screens.
-Prepare authored text outside drawing. Fixed capacities: 32 enemies, 32 shots,
-64 visual effects, 16 wall rectangles per room, one currency drop. No recurring
-world-rule/drawing allocations; profile portable service requests separately.
+Prepare authored text outside drawing. Fixed capacities: 32 enemy slots, 32 shots,
+four rings, one currency drop and static room geometry (at most four wall rectangles in the current areas).
+Hit/hurt effects use fixed counters; there is no standalone visual-effect pool.
+No recurring world-rule/drawing allocations; profile portable service requests separately.
 PROFILE.md records small update-time storage/audio requests and zero draw/mix
-allocation events along the complete route. Hosts own capabilities; game releases all loaded
-assets/layouts/audio handles at shutdown, including partial-init cleanup.
+allocation events along the complete route. Hosts own capabilities; game releases
+all loaded assets/layouts/audio handles at shutdown, including partial-init cleanup.
 
 Save version 1 explicitly encodes checkpoint, currency, drop, weapon, upgrades,
 charms, permanent unlocks, boss victory and settings. Continue restores rested
@@ -133,3 +135,30 @@ a stress regression reproduces that failure and proves the longer guard permits
 an attack. This is game combat policy, not a framework facility. Hazard capacities
 are 32 shots and four rings; an exhausted pool skips a new spawn rather than
 replacing a live hazard. Rest, respawn and room transition clear both arrays.
+
+
+## Final acceptance review — 2026-11-11
+
+| Requirement | Reviewed evidence |
+| --- | --- |
+| Beginning, three connected areas, ending and all screens | Full input routes, actual host winning/reload checks, menu and death captures |
+| Deliberate combat, four archetypes and two boss phases | Timing/fairness regressions, actual boss routes, archetype pose studies and slowed combat excerpts |
+| Two weapons, equipment, upgrades, lanterns, useful lift/reward | Full keyboard/virtual-controller routes; menu feedback and save tests |
+| Death/drop loss/recovery/reset | Rule regressions plus actual normal-input death/respawn/recovery captures |
+| Cohesive presentation and feedback | Authored text/landmarks/silhouettes, original score/effects, pose and rejection-feedback corrections, actual UI captures |
+| Public workflow, persistence and cleanup | Fresh archive consumer; SDL and three-browser reloads; explicit shutdown/resource assertions |
+| Representative performance/resources | Ordinary and shock CPU/SDL profiles, allocation observations and retained tail data in PROFILE |
+| First-success duration/enjoyment | Unverified; 15–30 minutes remains a design target, with a substantial pacing risk from the fast expert route |
+
+The original proposed 64-effect pool and 16-wall budget were unnecessary: current
+feedback uses counters and bounded hazards, and actual geometry is static. This
+records the implemented capacity rather than implying unused pools exist. No
+required player-facing system was dropped. The external first-play/hardware checks
+remain explicit limits; automated routes do not establish subjective enjoyment.
+
+
+Geometry detail: player melee requires center distance at most nominal reach plus
+nine pixels of target extent, forward dot product greater than 0.55 and clear wall
+visibility. Enemy melee includes targets within eight pixels of its center from
+any facing; farther targets use the fan/thrust rules above. These are the actual
+center/extent tests, rather than a claim that every painted weapon pixel damages.

@@ -431,7 +431,7 @@ PROFILE.md; no universal performance or enjoyment claim follows.
 
 Completed the previously partial review of the October23 audit, November4 audit
 and November9 consolidation, November7 rendering/chess, November8 composition and
-November10 diagnostics follow-ups. Read the current quickstart/installation,
+November 10 diagnostics follow-ups. Read the current quickstart/installation,
 authoring compatibility inventory, GameProtocol, rendering, input, asset/image,
 authored-text, sprite-animation, audio/lifetime, saves, testing, browser-authoring
 and diagnostics guides. Completed Seed Sprint's game/wrapper, both dogfood game
@@ -599,3 +599,31 @@ cleanup 0, and unchanged 31 update requests/2,530 bytes, with zero draw/mix requ
 PROFILE.md retains current distributions and the 41.210 ms frame tail at input 555;
 its cause remains unattributed. Game saves remain intentionally timed. No hard
 frame guarantee or unsupported renderer optimization follows.
+
+
+## 2026-11-11 — final review and handoff
+
+The final verification reports were completed before midnight UTC+7 on November 10;
+the handoff/review is dated November 11. ASSESSMENT-2026-11-11.md supersedes the
+working assessment's provisional status, links final proof/limits and retains the
+focused commit history. DESIGN/GUIDE now describe the reviewed playable build,
+actual capacities and the explicit unmeasured 15–30 minute first-success target.
+The fast expert route remains a substantial pacing risk, not a measured human
+play duration. No external playtest, physical device check or subjective enjoyment
+claim is manufactured to close that gap.
+
+All mandatory systems and concrete native/browser integration checks are delivered.
+The review used actual captures/interactions and corrected demonstrated feedback,
+pose and state issues; test passage alone is not its presentation verdict. Open
+replay-tooling and native-tail attribution observations remain in FRICTION. Final
+README/notice/diff/format/link checks and the final documentation commit follow.
+Owned Safari services and the task-owned loopback 8114 server are stopped; temporary
+verification UUID directories are removed. The game guide contains fresh launch
+commands rather than depending on a lingering server.
+
+Handoff checks: source/ZON formatting and current diff checks pass; the final
+manifest's every package path exists. Final ReleaseFast package passes 9/9 steps
+(cached implementation). Final docs/link/recipe run passes 43/43 steps and 36/36
+tests. Existing README diff against 1d202e9f is empty. The original Source Sans
+notice remains verbatim, including its inherited whitespace. Final documentation
+changes add the November 11 assessment to package paths and the non-README index.

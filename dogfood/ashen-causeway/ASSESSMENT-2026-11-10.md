@@ -1,5 +1,8 @@
 # Ashen Causeway integration assessment — 2026-11-10
 
+Historical working assessment. The [November 11 final review](ASSESSMENT-2026-11-11.md)
+supersedes its provisional status and measurement summary.
+
 Ashen Causeway implements a beginning-to-ending action RPG through Peas's public
 native/browser GameProtocol workflow. Complete automated routes and reloads pass
 in SDL, Chromium, Firefox and real Safari. **The game remains under review:**

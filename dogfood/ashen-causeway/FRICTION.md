@@ -1,8 +1,10 @@
 # Ashen Causeway — framework friction
 
 Started 2026-11-10 at engine revision 1d202e9f. This is the canonical report.
-No engine defect has been demonstrated yet. The game is in development; this
-report does not certify complete gameplay or platform validation.
+No engine correctness defect was demonstrated by this game. Complete native and
+browser routes are verified; the [final assessment](ASSESSMENT-2026-11-11.md)
+retains the pacing, hardware and profiling limits. Open investigations below do
+not imply broader platform validation.
 
 ## Observations
 

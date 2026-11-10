@@ -1,14 +1,18 @@
 # Ashen Causeway development build
 
-This is an unfinished action RPG prototype. The complete scope and acceptance
-gates remain in [DESIGN.md](DESIGN.md). First-run pacing assessment and final
-encounter/presentation review remain open.
+Ashen Causeway is a complete playable action RPG developer build, reviewed through
+native/browser routes, interaction checks and gameplay captures. The scope and
+combat rules are in [DESIGN.md](DESIGN.md).
+
+The intended 15–30 minute first-success duration remains unmeasured. The expert
+automated route takes about 110 seconds of simulation, so first-play pacing and
+enjoyment remain a material evidence gap. No duration claim follows from the tests.
 
 From this directory, using Zig 0.15.2:
 
 ```
 zig build test
-zig build run
+zig build run -Doptimize=ReleaseFast
 zig build web
 python3 -m http.server --bind 127.0.0.1 --directory zig-out/web 8000
 ```
@@ -39,7 +43,7 @@ the Warden cleave a fan. The Censer launches a moving shot along its committed
 aim. Warden phase two alternates faster melee with an expanding bell shock.
 Dodge through the ring or retreat beyond its reach; the inner space is safe.
 [DESIGN.md](DESIGN.md) records exact timings and damage. Once the Warden is defeated, ring the third bell and interact
-with it again to rekindle the beacon, then view victory and credits. This build does not meet completion gates.
+with it again to rekindle the beacon, then view victory and credits. Return to the title and choose New Game to replay.
 
 Death drops carried embers, replacing any earlier drop even if carrying zero.
 Walk over the drop to recover it once. Respawn resets enemies and combat resources
@@ -173,9 +177,8 @@ a full readback every ten ticks. Tick ranges are deliberately tied to this route
 update them when the reference input changes. These are visual inspection aids,
 not timing measurements or physical gameplay recordings.
 
-The [dated integration assessment](ASSESSMENT-2026-11-10.md) links the proof,
-remaining work and prioritized framework observations. Its status remains under
-review while first-play pacing and final acceptance are unresolved.
+The [dated integration assessment](ASSESSMENT-2026-11-11.md) links the final review,
+proof, measured limits and prioritized framework observations.
 
 Optional pose/menu studies and real death/recovery captures use the same tests:
 
@@ -187,3 +190,21 @@ The route directory includes actual normal-input death, checkpoint respawn and
 currency recovery PNGs. Pose studies supplement this with isolated enemy
 windup/release/strike/recovery fixtures and menu fixtures; those arranged scenes
 are explicitly labeled and are not full gameplay routes. No fixtures ship.
+
+
+Verified runtime targets for this game are Intel macOS/SDL GPU/Metal and WebGL 2
+in Chromium 157, Firefox 158 and Safari 18.6 on that Mac. Peas browser preview
+status is unchanged. Apple Silicon, Linux/Windows interaction, physical controllers,
+OS IME, assistive technology and speaker quality have not been checked for this
+game. The controller route uses virtual input. Browser performance, native GPU
+readback and physical input/display latency remain unmeasured.
+
+The final browser-route check also explicitly shuts the runtime down and requires
+zero scheduled frames/game GPU resources, no protocol failure and a destroyed host.
+The current profile includes a 41.2 ms native frame tail at input tick 555; its
+cause remains open. See PROFILE rather than treating medians as a frame guarantee.
+
+
+ReleaseFast is the recommended native play command above. For Debug authoring,
+`UP_DEVELOPER_OVERLAY=0 zig build run` keeps the framework diagnostics overlay
+from covering the game HUD while retaining ordinary debug checks.
