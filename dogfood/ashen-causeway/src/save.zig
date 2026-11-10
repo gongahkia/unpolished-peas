@@ -82,6 +82,8 @@ test "save preserves progression and resets transient combat" {
     w.player.action = .heavy;
     w.player.pending = .dodge;
     w.player.flasks = 0;
+    w.shots[0].life = 100;
+    w.rings[0].alive = true;
     const b = encode(w, .{ .music = 20, .effects = 80, .shake = true });
     const loaded = try decode(&b);
     try std.testing.expectEqualDeep(b, encode(loaded.state, loaded.settings));
@@ -91,6 +93,8 @@ test "save preserves progression and resets transient combat" {
     try std.testing.expectEqual(@as(u16, 0), loaded.state.enemies[4].hp);
     try std.testing.expectEqual(@as(f32, 70), loaded.state.pos.x);
     try std.testing.expect(loaded.state.player.pending == null);
+    for (loaded.state.shots) |shot| try std.testing.expectEqual(@as(u16, 0), shot.life);
+    for (loaded.state.rings) |ring| try std.testing.expect(!ring.alive);
 }
 test "save rejects truncation bit corruption and invalid fields even with checksum" {
     const original = encode(world.World.init(), .{});

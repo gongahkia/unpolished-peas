@@ -48,3 +48,35 @@ Evidence: game zig-out/evidence/browser-smoke.json and save-failed PNGs, plus th
 deterministic tests. Category: supported facility working as documented; severity
 none, workaround/cost none. Game-owned byte encoding, validation and warning UI
 remain ordinary authoring responsibilities. No serialization engine is proposed.
+
+## Game combat interruption loop (resolved game bug)
+
+Author task: make enemies stagger without allowing unlimited attack interruption.
+Context: Intel macOS, Zig 0.15.2, Debug, baseline 5fea8558's 72-tick stagger guard;
+relevant game API/source: Enemy.stagger_guard and World.tick in src/world.zig.
+Expected: repeated light hits leave an enemy a chance to complete anticipation.
+Observed: the guard expired before stagger + recovery + windup completed, so
+repeated attacks could keep restarting anticipation. Severity medium, combat
+fairness; classification game bug, not an engine defect or missing facility.
+
+Regression: `zig test dogfood/ashen-causeway/src/world.zig --test-filter 'repeated light hits'`.
+The stress fixture replenishes stamina/HP and holds positions to isolate combat
+interruption; it is not a normal-input playthrough. A temporary copy of the
+current world/combat modules with `e.stagger_guard = 180` replaced by `72` fails
+that assertion (`saw_active` is false, exit 1). The current 180-tick version
+passes. This gives the enemy enough resistance to complete an attack while
+allowing initial stagger. No workaround/runtime facility or framework API is
+needed; resolution is game-owned timing policy with this regression. Final
+status: resolved in b57d06b1, subject to ordinary encounter play review.
+
+## Combat presentation and audio facilities
+
+The public Canvas lines/primitives express game-owned silhouettes and attack
+regions without a renderer change. Public Audio.loadWav/loadMusic(.wav), play,
+setMusicVolume, unloadSound and unloadMusic support an eight-second original
+ambient score plus seven effects. Ownership is explicit in src/sound.zig;
+scene/death resets retain reusable sources and shutdown releases them. The WAV
+score is larger than OGG but small and reproducible without an external encoder
+(352,844 encoded bytes). This is an asset choice, not a demonstrated engine gap.
+No engine change is requested. Tests verify decoded sources, finite nonzero PCM,
+zero-volume silence and stale handles after release across three cycles.

@@ -683,3 +683,25 @@ test "repeated light hits cannot indefinitely postpone an enemy attack" {
     }
     try std.testing.expect(saw_active);
 }
+
+test "shock band damages once leaves the inner space safe and respects walls" {
+    var w = World.init();
+    w.room = 2;
+    w.pos = .{ .x = 860, .y = 280 };
+    w.rings[0] = .{ .center = .{ .x = 760, .y = 280 }, .age = 25, .alive = true };
+    w.hazardsTick();
+    try std.testing.expectEqual(@as(u8, 74), w.player.hp);
+    w.player.immunity = 0;
+    w.hazardsTick();
+    try std.testing.expectEqual(@as(u8, 74), w.player.hp);
+    w.player = .{};
+    w.pos = .{ .x = 760, .y = 280 };
+    w.rings[0] = .{ .center = w.pos, .alive = true };
+    w.hazardsTick();
+    try std.testing.expectEqual(@as(u8, 100), w.player.hp);
+    w.room = 0;
+    w.pos = .{ .x = 270, .y = 200 };
+    w.rings[0] = .{ .center = .{ .x = 210, .y = 200 }, .age = 13, .alive = true };
+    w.hazardsTick();
+    try std.testing.expectEqual(@as(u8, 100), w.player.hp);
+}

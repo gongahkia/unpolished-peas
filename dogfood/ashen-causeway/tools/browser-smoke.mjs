@@ -3,6 +3,7 @@
 import {chromium, firefox} from '../../../script/browser-authoring/node_modules/playwright/index.mjs';
 import {mkdir, writeFile} from 'node:fs/promises';
 import assert from 'node:assert/strict';
+import {instrumentation} from '../../../script/browser-authoring/instrumentation.mjs';
 const out = new URL('../zig-out/evidence/', import.meta.url);
 await mkdir(out, {recursive:true});
 const results=[];
@@ -10,6 +11,7 @@ for (const name of (process.env.PEAS_SMOKE_BROWSERS ?? 'chromium').split(',')) {
   const browser=await (name==='firefox'?firefox:chromium).launch(name==='chromium'?{channel:'chrome',headless:true,args:['--enable-webgl','--use-angle=swiftshader','--enable-unsafe-swiftshader']}:{headless:true});
   try {
     const page=await browser.newPage({viewport:{width:1100,height:760}});
+    await page.addInitScript(instrumentation);
     const press=async key=>{await page.keyboard.press(key,{delay:30});await page.waitForTimeout(60);};
     const errors=[];page.on('pageerror',e=>errors.push(String(e)));
     await page.goto(process.env.PEAS_GAME_URL ?? 'http://127.0.0.1:8114/?renderer=webgl2');
@@ -57,8 +59,19 @@ for (const name of (process.env.PEAS_SMOKE_BROWSERS ?? 'chromium').split(',')) {
     await press('Escape');await press('ArrowDown');await press('Enter');await page.waitForTimeout(100);
     const retried=await readSave();assert.equal(retried.weapon,0);assert.notEqual(retried.raw,saved.raw);
     const retry=await capture('save-retried');
+    await press('Escape');
+    await page.keyboard.down('ArrowDown');await page.waitForTimeout(1100);await page.keyboard.up('ArrowDown');
+    await page.keyboard.down('ArrowRight');await page.waitForTimeout(2900);await page.keyboard.up('ArrowRight');
+    await page.keyboard.down('ArrowUp');await page.waitForTimeout(1200);await page.keyboard.up('ArrowUp');
+    const encounter=[];
+    for(let i=0;i<5;i++) {await page.waitForTimeout(180);encounter.push(await capture(`encounter-${i}`));}
+    await press('j');await page.waitForTimeout(150);const duel=await capture('duel');
+    await press('Space');await page.waitForTimeout(120);const dodge=await capture('dodge');
+    await page.waitForFunction(()=>window.peasTest?.nonzero>0);
+    const audio=await page.evaluate(()=>({phase:window.unpolishedPeas.host.audio().phase,submissions:window.peasTest.submissions,nonzero:window.peasTest.nonzero,invalidPcm:window.peasTest.invalidPcm}));
+    assert.equal(audio.invalidPcm,0);assert.ok(audio.nonzero>0);assert.equal(audio.phase,'active');
     assert.deepEqual(errors,[]);
-    results.push({browser:name,version:browser.version(),title,play,action,pause,continued,rejected,retry,persistence:{reload:true,rejectedWritePreserved:true,retry:true},errors,coverage:'Trusted keyboard smoke and nonzero WebGL readback, not full route or parity validation'});
+    results.push({browser:name,version:browser.version(),title,play,action,pause,continued,rejected,retry,encounter,duel,dodge,audio,persistence:{reload:true,rejectedWritePreserved:true,retry:true},errors,coverage:'Trusted keyboard smoke and nonzero WebGL readback, not full route or parity validation'});
   } finally {await browser.close();}
 }
 await writeFile(new URL('browser-smoke.json',out),JSON.stringify(results,null,2));

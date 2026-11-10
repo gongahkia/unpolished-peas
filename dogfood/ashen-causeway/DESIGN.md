@@ -100,3 +100,34 @@ frame times and allocations. First-run duration remains a target until measured.
 Canonical FRICTION.md records evidence, including facilities that work well.
 A dated assessment and GUIDE.md must link commands, evidence, limitations and
 focused commit IDs. Every existing README stays unchanged. No publish or push.
+
+## Implemented enemy rules — 2026-11-10
+
+All values are fixed 60 Hz ticks. Normal enemies acquire a visible player inside
+240 pixels, commit aim at anticipation start and do not track during the strike.
+
+| Enemy | Anticipation | Output | Recovery |
+| --- | ---: | --- | ---: |
+| Drifter | 42 | 32-pixel cleave fan, dot(direction)>0.45, 18 damage | 48 |
+| Pike Watch | 48 | 56-pixel forward thrust, 10-pixel half-width, 18 damage | 48 |
+| Censer | 70 | One locked-direction shot: speed 2.5 pixels/tick, radius 3, life 180 ticks, 18 damage | 48 |
+| Hound | 34 | Nine 3-pixel approach steps, then 30-pixel bite corridor with 14-pixel half-width, 18 damage | 72 |
+| Warden phase one | 54 | 76-pixel cleave fan, 32 damage | 64 |
+| Warden phase two melee | 36 | Same cleave, alternating with bell shock | 64 |
+| Warden phase two shock | 72 | Expanding circular band from radius 20 to 200 over 60 ticks, 26 damage | 84 |
+
+Melee damage is checked once per attack during active ages 1–10. The active-age-0
+pose is the release cue before that first damage check. Censer emits its shot at
+release and has no instant beam damage. Shock collision uses the swept band plus
+13 pixels for band/player extent; its inner space is safe. A dodge or existing
+immunity consumes a crossing so the trailing edge cannot damage the player after
+a successful dodge. Walls occlude melee, shots and shocks. After half health, the
+Warden has a 120-tick invulnerable, non-attacking transition and a full recovery
+before alternating attacks begin. Shocks clear when the Warden dies.
+
+Damaging an enemy causes knockback and at most one 18-tick stagger per 180 ticks.
+The original 72-tick resistance allowed light attacks to keep postponing windup;
+a stress regression reproduces that failure and proves the longer guard permits
+an attack. This is game combat policy, not a framework facility. Hazard capacities
+are 32 shots and four rings; an exhausted pool skips a new spawn rather than
+replacing a live hazard. Rest, respawn and room transition clear both arrays.

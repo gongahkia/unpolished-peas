@@ -140,3 +140,53 @@ failed-write preservation/retry and visible-warning drawing, corrupt-save
 retention, New Game settings preservation, all menu draw states, capped upgrade
 spending/capacities, charm mobility tradeoff and beacon victory gating. These
 fixture tests do not stand in for a complete normal-input winning route.
+
+## Enemy mechanics and combat feedback — 2026-11-10
+
+Censer shots now move with locked aim instead of applying instant beam damage.
+The Warden alternates second-phase cleaves with anticipated expanding shocks,
+after its safe transition and recovery. World-owned fixed arrays cap shots at
+32 and rings at four; pools skip spawns when full, never replace live hazards,
+and clear at checkpoints/respawns/transitions. Saves explicitly exclude them.
+Pike thrust/Hound bite corridors now differ from Drifter/Warden cleave fans.
+DESIGN.md records the actual timing, extent, damage, dodge crossing and reset rules.
+A stress regression exposed a repeat-stagger game bug; an old-guard reproduction
+fails and the revised guard passes. See FRICTION.md for evidence and classification.
+
+Replaced letter-labelled enemy circles with distinct bodies, anticipation/recovery
+poses and outlined threat regions, plus health bars and phase/attack cues. Browser
+keyboard interactions reached a live Reed Quay encounter. Captures of anticipation,
+release and player attack/dodge were inspected: the Drifter fan was visibly ahead
+of its body and the Pike had a distinct tall silhouette and thrust corridor.
+A Hound anticipation outline includes its forthcoming dash distance. Typography,
+environment detail, full boss capture review and final visual polish remain open.
+
+Added original generated score and seven cues, separately controlled volumes,
+optional hurt flash/camera shake (off by default), expired/rejected-action feedback,
+and a new-journey contextual control tutorial. tools/generate_audio.py retains
+all source; assets/PROVENANCE.txt records origin without choosing a license.
+The public Audio source handles are explicitly unloaded at shutdown. Readiness
+retry allows browser autoplay recovery after input. Native test coverage checks
+source decoding, volume-zero silence, finite nonzero mixed samples, release and
+stale-handle rejection across three content cycles.
+
+Commands from the game directory:
+
+```
+zig build test web -j2 --summary all
+zig build test run -Doptimize=ReleaseFast -j2 --summary all -- --frames 120
+```
+
+At the audio integration checkpoint these passed 26 tests; all 15 Debug/web and
+10 optimized test/native-run steps succeeded. The bounded native run selected
+Cocoa/SDL GPU/MSL and exited normally. It was a launch/cleanup check, not a native
+winning route or speaker evaluation. Follow-up UI tutorial edits are checked
+separately before commit.
+
+The browser script (same command as above) now imports the existing authoring
+instrumentation and asserts finite nonzero PCM accepted by WebAudio after trusted
+input, alongside readbacks, save/reload/rejection/retry and encounter captures.
+Chromium 157.0.8103.39 accepted 457 nonzero submissions; Firefox 158.0 accepted
+450 nonzero submissions out of 452 in this run, with zero invalid PCM or page
+errors. Counts depend on scheduling. These establish submission, not listening
+quality, native speaker output, broad performance or a complete playthrough.
