@@ -27,7 +27,7 @@ for path in \
     zig-out/bin/neon-siege \
     zig-out/licenses/Basic-OFL.txt \
     zig-out/web/index.html \
-    zig-out/web/neon-siege.wasm \
+    zig-out/web/unpolished-peas.wasm \
     zig-out/web/bootstrap.mjs \
     zig-out/web/host.mjs \
     zig-out/web/licenses/Basic-OFL.txt; do

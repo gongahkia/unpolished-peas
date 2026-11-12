@@ -12,3 +12,15 @@ practice. Items remain here even when Peas should not abstract them.
 | Checkpoint/progress | Persist tiny game-owned values and tolerate failure | Three explicit bytes work naturally through `SaveStore` | Ignore recoverable store errors | none | none | No serialization/checkpoint framework. |
 | Browser iteration | Rebuild and refresh a rich reference game | Existing `dev-web` workflow applies unchanged | None | resolved tooling | none | Existing browser developer workflow is adequate. |
 | Native asset edits | Update sheet/font without restart during development | Existing desktop registration covers the atlas/font | Host-wrapper registration | discoverability | low | README points to the opt-in workflow; no game/runtime API change. |
+
+## Browser package startup — 2026-11-12
+
+Reproduced from 76a82556 on Intel macOS/Chromium 157 with Zig 0.15.2. The
+game package installed a game-named Wasm file while the common bootstrap requests
+`unpolished-peas.wasm`. A successful build therefore reached a load-failure shell.
+Classification: game packaging bug, high player impact; no engine ABI defect.
+Correct the package destination and archive-consumer expectation to the existing
+bootstrap contract. Trusted Chromium interaction and strict readbacks then pass;
+startup failure and subsequent baseline captures remain under root
+`zig-out/diagnostics/two-games-baseline`. Broader verification follows the polish
+plan rather than being inferred from this startup check. Historical entries remain.

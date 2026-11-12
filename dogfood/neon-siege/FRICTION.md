@@ -14,3 +14,15 @@ even when the issue was deliberately not abstracted into Peas.
 | Browser sound before first gesture | Ignore failed early SFX and continue | `blocked` and permanently unavailable both produce recoverable play failure | Gameplay ignores the failed output request | platform behavior | low | Keep current behavior; this game does not need a distinction. |
 | Low-resolution composition | Render gameplay once at 80x45 and scale nearest | Works headlessly with no per-frame allocation | CPU software surface is deliberately modest | performance | medium | Measure in a graphical run before treating GPU surfaces as a required API. |
 | Game rules | Organize enemies, collision, waves, and projectiles | Plain fixed arrays and simple geometry stay readable | Game-owned code | game-specific/non-framework | none | Correctly remains out of Peas. |
+
+## Browser package startup — 2026-11-12
+
+Reproduced from 76a82556 on Intel macOS/Chromium 157 with Zig 0.15.2. The
+game package installed a game-named Wasm file while the common bootstrap requests
+`unpolished-peas.wasm`. A successful build therefore reached a load-failure shell.
+Classification: game packaging bug, high player impact; no engine ABI defect.
+Correct the package destination and archive-consumer expectation to the existing
+bootstrap contract. Trusted Chromium interaction and strict readbacks then pass;
+startup failure and subsequent baseline captures remain under root
+`zig-out/diagnostics/two-games-baseline`. Broader verification follows the polish
+plan rather than being inferred from this startup check. Historical entries remain.

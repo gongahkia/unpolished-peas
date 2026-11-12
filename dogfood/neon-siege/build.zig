@@ -54,7 +54,7 @@ pub fn build(b: *std.Build) void {
     browser.entry = .disabled;
     browser.rdynamic = true;
     browser.import_memory = true;
-    const install_browser = b.addInstallArtifact(browser, .{ .dest_dir = .{ .override = .{ .custom = "web" } }, .dest_sub_path = "neon-siege.wasm" });
+    const install_browser = b.addInstallArtifact(browser, .{ .dest_dir = .{ .override = .{ .custom = "web" } }, .dest_sub_path = "unpolished-peas.wasm" });
     const install_runtime = b.addInstallDirectory(.{ .source_dir = browser_peas.path("src/browser"), .install_dir = .prefix, .install_subdir = "web", .include_extensions = &.{".mjs"} });
     const install_font_license_web = b.addInstallFileWithDir(b.path("assets/OFL.txt"), .{ .custom = "web/licenses" }, "Basic-OFL.txt");
     const install_font = b.addInstallFileWithDir(browser_peas.path("src/fixtures/text/debug-5x7-v1.json"), .{ .custom = "web" }, "debug-font-v1.json");
