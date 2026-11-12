@@ -193,3 +193,12 @@ This evidence covers WebGL 2 on this Intel Mac. It does not promote browser
 support or establish new WebGPU, mobile, Apple Silicon, bare-metal Linux,
 Windows, physical controller, physical IME, accessibility or speaker-quality
 evidence.
+
+The shared Safari adapter accepts `Enter`, `ArrowLeft` and `ArrowRight` as
+well as the existing named keys. It maps these names to WebDriver special-key
+code points; raw multi-character names are not valid Safari action values.
+`node --test script/browser-authoring/adapters.test.mjs script/browser-authoring/replay.test.mjs`
+checks special-key payloads and the normalized replay driver independently.
+Trusted Enter/movement/pause/audio/reload routes for Neon Siege and Lantern Leap
+exercise these mappings in real Safari; these remain browser automation rather
+than physical-keyboard evidence.

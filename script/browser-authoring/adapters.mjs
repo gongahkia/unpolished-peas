@@ -3,7 +3,7 @@ import {writeFile} from "node:fs/promises";
 import {WebDriver} from "../safari_webdriver.mjs";
 
 const elementKey = "element-6066-11e4-a52e-4f735466cecf";
-const keys = {ArrowDown: "\ue015", ArrowUp: "\ue013", Escape: "\ue00c", F4: "\ue034", F5: "\ue035", Space: "\ue00d"};
+const keys = {Enter: "\ue007", ArrowLeft: "\ue012", ArrowRight: "\ue014", ArrowDown: "\ue015", ArrowUp: "\ue013", Escape: "\ue00c", F4: "\ue034", F5: "\ue035", Space: "\ue00d"};
 export const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 class Adapter {
