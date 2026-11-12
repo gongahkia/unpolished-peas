@@ -71,8 +71,17 @@ pub fn build(b: *std.Build) void {
     b.step("profile-route", "Profile CPU callbacks and allocation events along recorded gameplay").dependOn(&profile_run.step);
 
     const profiling_step = b.step("build-profiling", "Build optional profiling tools before timing runs");
+    const observer_bench = b.addExecutable(.{ .name = "ashen-profile-observer", .root_module = b.createModule(.{
+        .root_source_file = b.path("src/profile_observer_bench.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = peas.module("unpolished-peas") }},
+    }) });
+    profiling_step.dependOn(&b.addInstallArtifact(observer_bench, .{ .dest_dir = .{ .override = .{ .custom = "verification" } } }).step);
     profiling_step.dependOn(&b.addInstallArtifact(profile, .{ .dest_dir = .{ .override = .{ .custom = "verification" } } }).step);
     profiling_step.dependOn(&b.addInstallArtifact(verification, .{ .dest_dir = .{ .override = .{ .custom = "verification" } } }).step);
+    const observer_tests = b.addTest(.{ .root_module = verification_module });
+    b.step("test-profile-observer", "Test bounded save observations and transparent storage errors").dependOn(&b.addRunArtifact(observer_tests).step);
 
     // `zig build` already installs this layout. The named step makes the
     // distributable desktop output discoverable: zig-out/bin + zig-out/assets.

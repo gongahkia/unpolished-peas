@@ -4,6 +4,8 @@ const builtin = @import("builtin");
 const up = @import("unpolished-peas");
 const game = @import("game.zig");
 const Counter = @import("profile_allocator.zig").CountingAllocator;
+const state_digest = @import("profile_state.zig").digest;
+const save = @import("save.zig");
 const Sample = struct {
     tick: usize,
     update_ns: u64,
@@ -18,6 +20,8 @@ const Sample = struct {
     shots: usize,
     rings: usize,
     boss_phase_two: bool,
+    state_hash: u64,
+    save_bytes: [save.size]u8,
 };
 pub fn main() !void {
     if (builtin.mode != .ReleaseFast) return error.ProfileRequiresReleaseFast;
@@ -72,7 +76,7 @@ pub fn main() !void {
         for (r.game.state.rings) |ring| if (ring.alive) {
             rings += 1;
         };
-        samples[index] = .{ .tick = index, .update_ns = update_ns, .draw_ns = draw_ns, .audio_ns = audio_ns, .update_allocations = update_allocations, .draw_allocations = draw_allocations, .audio_allocations = counter.allocation_events, .allocated_bytes = update_bytes + draw_bytes + counter.allocated_bytes, .room = r.game.state.room, .enemies = enemies, .shots = shots, .rings = rings, .boss_phase_two = phase_two };
+        samples[index] = .{ .tick = index, .update_ns = update_ns, .draw_ns = draw_ns, .audio_ns = audio_ns, .update_allocations = update_allocations, .draw_allocations = draw_allocations, .audio_allocations = counter.allocation_events, .allocated_bytes = update_bytes + draw_bytes + counter.allocated_bytes, .room = r.game.state.room, .enemies = enemies, .shots = shots, .rings = rings, .boss_phase_two = phase_two, .state_hash = state_digest(&r.game), .save_bytes = save.encode(r.game.state, r.game.settings) };
     }
     if (!r.game.state.completed or r.game.save_failed) return error.ProfileRouteDidNotWin;
     const peak_bytes = counter.peak_bytes;
