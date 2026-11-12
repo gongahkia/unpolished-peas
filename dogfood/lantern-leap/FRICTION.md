@@ -55,3 +55,30 @@ The regression uses a real in-memory store whose reads fail while writes remain
 available, proving that unknown valid bytes are not silently overwritten.
 Coyote time offers six airborne update opportunities; a blocked upward jump
 shows a low-ceiling message and consumes its buffer once.
+
+## Completed bounded polish verification — 2026-11-12
+
+The historical in-progress entries above are superseded by the completed
+[full review](REVIEW-2026-11-12.md) and current [guide](GUIDE.md).
+Debug/ReleaseFast tests pass (Neon 21, Lantern 20), with complete ordinary
+keyboard and virtual-controller pilots. Real native routes and separate process
+reloads pass; all Chromium 157, Firefox 158 and real Safari 18.6 renderer routes,
+actual save reloads, trusted controls, autoplay recovery, save rejection/retry
+and zero-resource explicit shutdown checks pass. Fresh hashed archive consumers
+build outside the checkout through public imports, retaining new tools/docs and
+OFL notices; their bundles pass the same three-browser renderer routes.
+
+Full skill review covers typography, surfaces, animation, silhouettes and bounded
+performance, including actual 10% motion captures. The native profile retains
+120 warmup/240 measured frames per window and all outliers; counted CPU-owned
+allocations return to zero. See the dated review for exact distributions/scope.
+Frame tails are observations, not an engine correctness finding or a promise of
+universal 60 FPS. No speculative performance change was introduced.
+
+Classification: game-specific control/recovery/presentation/ownership and packaging
+fixes; one small Safari automation named-key mapping gap, covered independently
+and with trusted real Safari keys. No engine API changes. The optional exporter
+and test host reuse canonical BrowserInput/shared replay.mjs; ordinary bundles
+contain no replay injection. Current and legacy test-origin records are restored.
+Physical controllers, subjective listening, other hardware/OS and long endurance
+remain unverified. External user playtesting is not a completion prerequisite.

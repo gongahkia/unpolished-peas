@@ -52,8 +52,8 @@ framework validation commands in example guides run from the Peas checkout.
 | Images, fonts, sheets and one cleanup boundary | [Asset workbench](guides/asset-recipes.md) |
 | Proportional menu labels and wrapped dialogue | [Font layout](guides/authored-text-layout.md) |
 | A complete local two-player board game | [Chess](guides/chess.md) |
-| Arena action, owned resources and camera | [Neon Siege](../dogfood/neon-siege/GUIDE.md) |
-| Scrolling, collision and animation selection in game code | [Lantern Leap](../dogfood/lantern-leap/GUIDE.md) |
+| Arena action, owned resources and camera | [Neon Siege](../dogfood/neon-siege/GUIDE.md) · [polish review](../dogfood/neon-siege/REVIEW-2026-11-12.md) |
+| Scrolling, collision and animation selection in game code | [Lantern Leap](../dogfood/lantern-leap/GUIDE.md) · [polish review](../dogfood/lantern-leap/REVIEW-2026-11-12.md) |
 | Complete action RPG, cross-host routes and measured limits | [Ashen Causeway guide](../dogfood/ashen-causeway/GUIDE.md), [assessment](../dogfood/ashen-causeway/ASSESSMENT-2026-11-11.md) |
 
 Seed Sprint is the starting project; the workbenches teach individual APIs.
