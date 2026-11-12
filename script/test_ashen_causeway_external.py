@@ -58,13 +58,20 @@ def main():
             persist()
             commands = [
                 ['zig', 'build', 'test', '-j2', '--summary', 'all'],
+                ['zig', 'build', 'export-browser-replay', '-j2', '--', str(project / 'zig-out/replays/keyboard_mouse.upr'), str(project / 'zig-out/exported')],
                 ['zig', 'build', 'package', '-j2', '--summary', 'all'],
                 ['zig', 'build', 'web', '-j2', '--summary', 'all'],
                 ['zig', 'build', 'run', '-j2', '--', '--frames', '120'],
             ]
             for index, command in enumerate(commands):
                 print('external Ashen Causeway: running ' + ' '.join(command), flush=True)
-                log = run(command, project, scratch / 'consumer-cache')
+                previous = os.environ.get('ASHEN_ROUTE_EVIDENCE')
+                os.environ['ASHEN_ROUTE_EVIDENCE'] = str(project / 'zig-out/replays')
+                try:
+                    log = run(command, project, scratch / 'consumer-cache')
+                finally:
+                    if previous is None: os.environ.pop('ASHEN_ROUTE_EVIDENCE', None)
+                    else: os.environ['ASHEN_ROUTE_EVIDENCE'] = previous
                 (output / f'command-{index}.log').write_text(log)
                 report['commands'].append({'command': command, 'status': 'passed', 'log': f'command-{index}.log'})
                 persist()
@@ -80,9 +87,14 @@ def main():
                 assert path.is_file(), name
                 report['built_sha256'][name] = hashlib.sha256(path.read_bytes()).hexdigest()
             assert '.path =' not in manifest.read_text()
+            for path in (project / 'zig-out/web').rglob('*'):
+                if path.suffix in ('.mjs', '.js', '.html'):
+                    assert '__peasReplay' not in path.read_text(), f'replay instrumentation shipped in {path}'
+            report['shipping_replay_instrumentation_absent'] = True
             # Copy the served browser artifact for later real-host checks without
             # changing its content or bringing the engine checkout into the bundle.
             shutil.copytree(project / 'zig-out/web', output / 'web', dirs_exist_ok=True)
+            shutil.copytree(project / 'zig-out/exported', output / 'browser-route-input', dirs_exist_ok=True)
             report['source_unchanged'] = True
             report['status'] = 'passed'
             persist()

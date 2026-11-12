@@ -1395,6 +1395,8 @@ pub fn build(b: *std.Build) void {
     core_api_snapshot_module.link_libc = true;
     core_api_snapshot_module.addIncludePath(b.path("vendor/stb"));
     const core_api_snapshot = b.addObject(.{ .name = "core-api-snapshot", .root_module = core_api_snapshot_module });
+    const replay_driver_tests = b.addSystemCommand(&.{ "node", "script/browser-authoring/replay.test.mjs" });
+    b.step("test-browser-replay-driver", "Test optional browser replay transport lifecycle").dependOn(&replay_driver_tests.step);
     const core_api_snapshot_test_step = b.step("test-core-api", "Verify the frozen core API snapshot");
     core_api_snapshot_test_step.dependOn(&core_api_snapshot.step);
     test_step.dependOn(&core_api_snapshot.step);
