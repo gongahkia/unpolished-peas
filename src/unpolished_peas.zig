@@ -9,6 +9,7 @@ pub const testSupport = api.testSupport;
 
 test {
     _ = @import("api.zig");
+    _ = @import("browser_input.zig");
     _ = @import("preview.zig");
     _ = @import("app.zig");
     _ = @import("actions.zig");

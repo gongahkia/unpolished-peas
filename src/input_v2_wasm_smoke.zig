@@ -79,3 +79,18 @@ pub export fn input_deinit() void {
     runner.?.deinit();
     runner = null;
 }
+
+// Cross-check against frames produced independently by the existing DOM encoder.
+pub export fn input_reencode(length: u32) u32 {
+    if (length != bytes.len) return 1;
+    const snapshot = browser.decode(&bytes) catch return 2;
+    const codec = up.preview.developer.BrowserInput;
+    codec.encode(snapshot, .{
+        .framebuffer_width = std.mem.readInt(u32, bytes[12..16], .little),
+        .framebuffer_height = std.mem.readInt(u32, bytes[16..20], .little),
+        .resize_epoch = std.mem.readInt(u32, bytes[8..12], .little),
+        .focused = (bytes[4] & 1) != 0,
+        .visible = (bytes[4] & 2) != 0,
+    }, &bytes) catch return 3;
+    return 0;
+}

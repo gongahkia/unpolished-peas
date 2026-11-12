@@ -23,7 +23,8 @@ doc.createElement = () => {
   textarea.focus = () => { doc.activeElement = textarea; };
   return textarea;
 };
-const input = createBrowserInput({canvas, window: win, document: doc, navigator: {getGamepads: () => []}, ResizeObserver: null});
+let pads=[];
+const input = createBrowserInput({canvas, window: win, document: doc, navigator: {getGamepads: () => pads}, ResizeObserver: null, mapCanvas:()=>({x:7,y:9})});
 canvas.emit("focus");
 function submit() {
   const destination = api.input_destination();
@@ -32,9 +33,21 @@ function submit() {
   view.setUint32(destination + 4, api.input_text_requested(), true);
   const length = input.read(destination, InputAbiV2.byteLength, memory);
   assert.equal(length, InputAbiV2.byteLength);
+  const expected = new Uint8Array(memory.buffer, destination, length).slice();
+  if((expected[4]&4)===0) expected.fill(0,60,68); // ignored absent-canvas coordinates canonicalize to zero
+  assert.equal(api.input_reencode(length), 0);
+  assert.deepEqual(new Uint8Array(memory.buffer,destination,length), expected, 'canonical Zig encoder matches independent JS host producer');
   assert.equal(api.input_submit(length), 0);
 }
 const tick = () => assert.equal(api.input_tick(), 0);
+pads=Array.from({length:4},(_,index)=>({index:index+7,connected:true,mapping:'standard',buttons:Array.from({length:17},(_,i)=>({pressed:i===index,value:i===index?1:0})),axes:[-.5,.25,1,-1]}));
+canvas.emit('pointermove',{clientX:12,clientY:16,movementX:3,movementY:-2});
+canvas.emit('pointerdown',{button:0,clientX:12,clientY:16});
+submit();
+pads=pads.map(p=>({...p,axes:[.5,-.25,0,0],buttons:p.buttons.map(()=>({pressed:false,value:0}))}));
+submit(); // Previous axes and controller release edges are independently produced by JS.
+pads=[];canvas.emit('pointerup',{button:0,clientX:12,clientY:16});
+submit();
 for (const code of ["KeyQ", "Digit1", "Digit2"]) win.emit("keydown", {code});
 submit(); // Presentation frame with zero updates.
 win.emit("keyup", {code: "KeyQ"});

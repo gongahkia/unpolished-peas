@@ -178,6 +178,7 @@ pub const assets = struct {
 
 pub const preview = struct {
     pub const developer = struct {
+        pub const BrowserInput = @import("browser_input.zig");
         pub const InputReplay = @import("input_replay.zig").Replay;
         pub const InputReplayButton = @import("input_replay.zig").Button;
         pub const InputReplayRecorder = @import("input_replay.zig").Recorder;
