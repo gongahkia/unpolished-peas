@@ -10,3 +10,19 @@ export function compactReadback(driver) {
   };
   return driver;
 }
+
+// Called before bootstrap, and serialized into the isolated test-host page.
+// Include legacy keys: a v1 record must neither seed a fresh route nor be lost.
+export function prepareGameSaves({game,continuing=false}) {
+  const prefix=`unpolished-peas.${game}:`;
+  const matches=key=>key.slice(key.lastIndexOf('/')+1).startsWith(prefix);
+  window.__referenceOriginalSaves=Object.keys(localStorage).filter(matches).map(key=>[key,localStorage.getItem(key)]);
+  if(!continuing)for(const [key]of window.__referenceOriginalSaves)localStorage.removeItem(key);
+}
+export function restoreGameSaves({game,old}) {
+  const prefix=`unpolished-peas.${game}:`;
+  const matches=key=>key.slice(key.lastIndexOf('/')+1).startsWith(prefix);
+  for(const key of Object.keys(localStorage).filter(matches))localStorage.removeItem(key);
+  for(const[key,value]of old)localStorage.setItem(key,value);
+  return old.every(([key,value])=>localStorage.getItem(key)===value)&&Object.keys(localStorage).filter(matches).length===old.length;
+}

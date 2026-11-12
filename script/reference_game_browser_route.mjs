@@ -1,4 +1,4 @@
-import {compactReadback} from './reference_game_checks.mjs';
+import {compactReadback,prepareGameSaves,restoreGameSaves} from './reference_game_checks.mjs';
 // Test-host-only route verification. Reuses the public wire encoder and shared replay driver.
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
@@ -21,11 +21,7 @@ const sha=async path=>createHash('sha256').update(await readFile(path)).digest('
 const report={status:'running',kind:'Normalized ordinary-input replay in real browser/Wasm; virtual controller is recorded input, not physical hardware or trusted automation. No performance claims.',game,mode:meta.mode,wasmSha256:await sha(join(bundle,'unpolished-peas.wasm')),wireSha256:await sha(join(input,'frames.bin')),ticks:meta.ticks,results:[]};
 const persist=()=>writeFile(join(out,'result.json'),JSON.stringify(report,null,2));
 // Test server owns a fresh loopback origin. Back up even this origin's saves.
-function saveSetup({game,key,continuing}){
-  const suffix=`unpolished-peas.${game}:${key}`;
-  window.__referenceOriginalSaves=Object.keys(localStorage).filter(k=>k.endsWith(suffix)).map(k=>[k,localStorage.getItem(k)]);
-  if(!continuing)for(const [k] of window.__referenceOriginalSaves)localStorage.removeItem(k);
-}
+
 const mime={'.html':'text/html','.mjs':'application/javascript','.json':'application/json','.wasm':'application/wasm'};
 const server=createServer(async(req,res)=>{try{
  const url=new URL(req.url,'http://localhost');
@@ -35,7 +31,7 @@ const server=createServer(async(req,res)=>{try{
  let data=await readFile(path);
  if(extname(path)==='.html'){
    const continuing=url.searchParams.has('continue');
-   data=Buffer.from(data.toString().replace(/<script\b/,`<script>(${saveSetup.toString()})(${JSON.stringify({game,key:meta.save_key,continuing})});${replayScript({url:continuing?'/__verify/reload.bin':'/__verify/frames.bin',frameBytes:meta.frame_bytes,ticks:continuing?1:meta.ticks})}</script><script`));
+   data=Buffer.from(data.toString().replace(/<script\b/,`<script>(${prepareGameSaves.toString()})(${JSON.stringify({game,key:meta.save_key,continuing})});${replayScript({url:continuing?'/__verify/reload.bin':'/__verify/frames.bin',frameBytes:meta.frame_bytes,ticks:continuing?1:meta.ticks})}</script><script`));
  }
  res.writeHead(200,{'content-type':mime[extname(path)]??'application/octet-stream','cache-control':'no-store'});res.end(data);
 }catch(error){res.writeHead(500);res.end(String(error));}});
@@ -53,7 +49,7 @@ try{for(const browser of values.browsers.split(',')){
   await driver.open();result.version=driver.version;
   await driver.navigate(base+'/probe');driver.captureProbe=await driver.evaluate(probeWebGlCapture);validateWebGlReadback(driver.captureProbe,'independent WebGL probe');result.probe=driver.captureProbe;
   const ready=async()=>{await driver.wait(()=>window.unpolishedPeas?.rendererDiagnostic?.context_status==='ready',null,'game ready');await driver.evaluate(()=>window.__peasReplay.ready);};
-  await driver.navigate(base+'/?renderer=webgl2');await ready();original=await driver.evaluate(()=>window.__referenceOriginalSaves);
+  await driver.navigate(base+'/?renderer=webgl2');original=await driver.evaluate(()=>window.__referenceOriginalSaves);await ready();
   result.renderer=await driver.evaluate(()=>window.unpolishedPeas.rendererDiagnostic);if(browser==='safari')validateRenderer(result.renderer,'webgl2');
   assert.equal(result.renderer.selected_renderer,'webgl2');assert.equal(result.renderer.fallback_reason,null);
   let next=0;
@@ -85,7 +81,7 @@ try{for(const browser of values.browsers.split(',')){
   result.status='passed';console.log(`${game} ${browser} ${meta.mode}: full route, ${result.frames.length} CPU comparisons, save reload and shutdown passed`);
  }catch(error){result.status='failed';result.error=String(error.stack);throw error;}
  finally{
-  try{if(original!==null)result.originalSavesRestored=await driver.evaluate(({old,game,key})=>{const suffix=`unpolished-peas.${game}:${key}`;for(const k of Object.keys(localStorage))if(k.endsWith(suffix))localStorage.removeItem(k);for(const[k,v]of old)localStorage.setItem(k,v);return old.every(([k,v])=>localStorage.getItem(k)===v);},{old:original,game,key:meta.save_key});}
+  try{if(original===null)try{original=await driver.evaluate(()=>window.__referenceOriginalSaves??null);}catch{}if(original!==null){result.originalSavesRestored=await driver.evaluate(restoreGameSaves,{old:original,game});assert.equal(result.originalSavesRestored,true);}}
   finally{try{await driver.evaluate(()=>window.__peasReplay?.dispose());}catch{}await driver.close();await persist();}
  }
 }report.status='passed';await persist();}catch(error){report.status='failed';report.error=String(error.stack);await persist();throw error;}finally{await new Promise(r=>server.close(r));}
