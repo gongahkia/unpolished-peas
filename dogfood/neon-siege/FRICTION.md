@@ -26,3 +26,28 @@ bootstrap contract. Trusted Chromium interaction and strict readbacks then pass;
 startup failure and subsequent baseline captures remain under root
 `zig-out/diagnostics/two-games-baseline`. Broader verification follows the polish
 plan rather than being inferred from this startup check. Historical entries remain.
+
+## Arena/control/resource polish — 2026-11-12 (verification in progress)
+
+The original camera hid threats beyond an 80×45 view; the whole 120×70 arena now
+remains visible inside a separate 320×200 world/HUD composition. Spawn warnings
+are non-damaging and safely separated from the player. Input/implementation/UI
+now agree on held sprint, with independent optional keyboard/right-stick aim,
+fixed firing cadence and no sprint invulnerability. Existing post-hit recovery
+has static feedback. Title/pause/death/restart and stable score/best fields are
+reviewed in actual Chromium captures. These are game design/control improvements,
+not a request for camera/AI/arena framework features.
+
+Initial blocked music is retried after readiness rather than requiring a toggle.
+Audio sources are explicitly unloaded, layouts release before their font, and
+ordinary restarts retain reusable resources. The original six-byte settings format
+remains; rejected writes expose pending/retry while preserving play. New original
+chirps replace extremely short click samples and retain a reproducible generator.
+
+Existing Neon-only trace/pixel expectations were updated after inspecting labeled
+arranged-combat captures: the full-arena camera, prepared authored font/HUD and
+wave breath change drawing intentionally. Original asset/engine goldens remain.
+Ordinary keyboard/controller routes reach wave four with damage/heal, sprint,
+pause, death and restart, without changing game state behind the inputs. Those
+checks do not stand in for the remaining native/browser/archive/motion/profiling
+verification. Historical friction entries remain above.
