@@ -123,7 +123,7 @@ game's zig-out/evidence directory. Classification: documented facilities working
 severity none, no workaround or engine API change. Full-game profiling remains
 separate from this zero-allocation text-draw check.
 
-## Complete replay through real hosts: developer bridge gap
+## Complete replay through real hosts: developer bridge gap (historical finding)
 
 Task: reuse a successful public UPR fixed-input replay to check the same whole
 journey in SDL and browser hosts, preserving actual rendering/storage. Context:
@@ -161,6 +161,44 @@ model. Status: integration verified with the game-owned bridge; proposal remains
 open. Existing renderer diagnostics, independent probes and compareReference
 readbacks were reusable unchanged and removed the need for a second renderer test
 system. Trusted input/audio smoke tests remain separate.
+
+### Resolution — shared optional adapter, 2026-11-12
+
+The preceding finding and results are retained as history. The tooling proposal
+is now resolved: `up.preview.developer.BrowserInput` provides the canonical Zig
+encoder/decoder for the existing wire ABI, and
+`script/browser-authoring/replay.mjs` provides reusable input-import injection
+and RAF stepping. Ashen's exporter no longer maintains ABI offsets, and its
+route verifier no longer maintains a private injection/RAF implementation.
+The existing DOM producer and v1/v2 decoder semantics remain compatible; neither
+UPR formats nor ordinary game APIs changed. Viewport, focus and visibility are
+explicit exporter metadata. Game seed/initial saves, milestones, expected
+progression, CPU references, strict renderer probes and tolerance 1 stay in the
+game verification code. The driver is only injected by a test server.
+
+Context: Intel macOS, Zig 0.15.2, native tests/optional exporter Debug and browser
+ReleaseSmall, baseline c8f4cf7f plus this focused change. Reproduction and exact
+evidence are recorded in the November 12 PROGRESS entry; GUIDE documents the
+shared workflow. The root engine check passes 85/85 steps and 328/328 tests.
+Independent JS DOM-produced bytes are compared with the Zig encoder through
+Wasm, including four controllers, pointer edges, physical keys and Unicode
+composition. Driver tests cover short buffers, malformed transport, exhaustion,
+edge nonduplication, cancellation, restart and wrapper restoration. Core public
+API compatibility is checked with the intentional preview-only addition.
+
+The fresh archive consumer builds the optional exporter using the public
+package, then normal package/web/native workflows without enabling replay.
+Chromium, Firefox and real Safari complete the same 6,577-tick route, ending
+reload, five route references plus the continued reference, explicit shutdown
+and save restoration. The detailed result files retain versions, hashes and
+per-browser assertions. The owned Safari service is stopped after verification.
+
+Classification remains developer ergonomics, with no demonstrated engine
+correctness defect. Remaining cost: expanded wire data is still about 12 MB for
+this route; this deliberately small facility does not stream UPR directly or
+generalize automation. Synthetic replay does not prove trusted/physical input,
+human pacing or performance. Frame-tail attribution remains a separate open
+investigation; this change adds no profiling or gameplay features.
 
 ## Profiled ordinary rendering and resource lifecycle (working facilities)
 

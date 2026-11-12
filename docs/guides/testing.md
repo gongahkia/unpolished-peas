@@ -231,6 +231,79 @@ hashes so existing goldens retain their meaning. `zig build test-browser-replay`
 exercises recording, parsing, isolated playback, and the portable hash on the
 freestanding Wasm target; it is also included in `test-browser-wasm-host`.
 
+## Optional browser replay bridge
+
+`up.preview.developer.BrowserInput` is the canonical Zig codec for the existing
+browser input wire format. The normal browser decoder delegates to it; the DOM
+producer remains `src/browser/input.mjs`. Exporters can encode a recorded
+`Input.Snapshot` without importing backend internals:
+
+```zig
+const codec = up.preview.developer.BrowserInput;
+var bytes: [codec.abi_bytes]u8 = undefined;
+try codec.encode(snapshot, .{
+    .framebuffer_width = 640,
+    .framebuffer_height = 360,
+    .focused = true,
+    .visible = true,
+}, &bytes);
+```
+
+The encoder allocates nothing, writes ABI `encode_version` (currently v2), and
+requires exactly `abi_bytes` of storage. Invalid sizes/nonfinite snapshots fail;
+invalid extended input propagates its validation error. Output is unspecified on
+error. `Metadata` requires viewport dimensions, focus and visibility because UPR
+snapshots omit them; `resize_epoch` defaults to zero. Null canvas pointers retain
+their absent flag and encode ignored coordinates as zero. Sparse controller
+slots compact in iteration order, retaining identities, connection state, edges
+and current/previous axes. Physical keys and text/composition use the existing
+bounded extension. The decoder still accepts the legacy v1 wire; UPR parsing and
+formats are unchanged.
+
+The optional checkout/source-archive helper
+`script/browser-authoring/replay.mjs` exports `replayScript` and `replayAbi`.
+A test HTTP server can prepend the returned script before ordinary bootstrap:
+
+```js
+import {replayScript, replayAbi} from './script/browser-authoring/replay.mjs';
+const injected = replayScript({
+  url: '/test/frames.bin', frameBytes: replayAbi.byteLength, ticks: frames.length,
+});
+// Serve injected in a script element before the shipping module script.
+// frames.bin concatenates codec.encode outputs, with no new transport header.
+```
+
+Await `window.__peasReplay.ready`, then call `advance(timestampMilliseconds)` to
+drain one queued RAF batch. Timestamps must be finite and monotonic. Each host
+input read consumes exactly one frame; capacity errors do not consume input and
+exhaustion throws rather than repeating the last frame's edges. Advancing an
+empty queue consumes nothing. This drives the ordinary host's fixed-update
+accumulator: callers must choose timestamps consistent with the recorded fixed
+rate, and assert consumed counts at their own milestones. It does not force one
+simulation update for arbitrary presentation timestamps.
+
+`cancel()` clears callbacks and stops playback. `dispose()` also restores owned
+RAF, Wasm instantiation and input-import wrappers; it is safe to repeat. Install
+again (or reload the page) to reset the cursor. Reinstallation disposes the prior
+driver, but callers must recreate game state, seed and initial saves themselves.
+Keep installation/disposal paired in test cleanup, restore test-origin saves,
+and retain renderer probes, readbacks and game-specific progression assertions.
+The helper is test-server instrumentation and is never copied into ordinary web
+bundles. No query flag enables it in shipping gameplay.
+
+Run this from the engine checkout for the independent JS-producer/Wasm-codec
+comparison, driver lifecycle/error contracts and public API check:
+
+```sh
+zig build test-browser-input-v2 test-browser-replay-driver test-core-api -Dwith_sdl=false -j2
+```
+
+Ashen Causeway's
+[guide](../../dogfood/ashen-causeway/GUIDE.md) demonstrates complete real-browser
+playback plus an archive-built optional exporter. Normalized replay is distinct
+from trusted browser automation and physical input; synthetic time is unsuitable
+for performance measurements.
+
 ## Framework verification
 
 The commands in this section run from the Peas checkout, not a generated game.

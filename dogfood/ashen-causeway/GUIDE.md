@@ -133,11 +133,17 @@ node dogfood/ashen-causeway/tools/browser-route.mjs --browsers chromium,firefox
 ```
 
 The external check creates a hashed source archive, fetches it into a fresh cache,
-and builds/tests/packages/runs a copied game outside the checkout in a path with
+and builds/tests/exports/packages/runs a copied game outside the checkout in a path with
 spaces. It preserves authored sources and notices and retains its browser output
 for the browser route check. Reports and command logs are in
 `zig-out/diagnostics/ashen-external`. It uses a loopback archive server and does
-not publish anything.
+not publish anything. It also retains the archive consumer's exported wire and
+CPU reference frames in `browser-route-input` beside its report and verifies that
+normal web output contains no replay instrumentation. To use that exact pair:
+
+```
+node dogfood/ashen-causeway/tools/browser-route.mjs --bundle zig-out/diagnostics/ashen-external/web --input zig-out/diagnostics/ashen-external/browser-route-input --browsers chromium,firefox
+```
 
 The native check opens a real SDL window, applies recorded normalized input once
 per fixed update, completes the journey, verifies the saved bytes, closes, then
@@ -145,8 +151,8 @@ loads that journey in a second process. Its UUID save namespace is separate from
 the game. Reports and CPU Canvas captures are in
 `zig-out/diagnostics/ashen-native`; these are not native GPU readbacks.
 
-The browser route check uses the archive-built bundle by default. A test-only
-HTTP shim injects normalized snapshots and advances the real Wasm/browser host
+The browser route check uses the archive-built bundle by default. The shared
+test-server driver `script/browser-authoring/replay.mjs` injects normalized snapshots and advances the real Wasm/browser host
 at synthetic 60 Hz. It checks the entire route, ending storage and actual page
 reload, plus six full RGBA readbacks against CPU references at the existing
 one-channel-unit tolerance. Reports/captures are in
@@ -158,6 +164,15 @@ These checks are automated input replay, not physical input, play-duration or
 performance measurements. The trusted-input smoke checks cover real browser
 keyboard/pointer integration separately. Verification hosts/exporters are optional
 build steps and add no replay bridge to the shipped game.
+
+The exporter calls the public optional `up.preview.developer.BrowserInput.encode`
+with explicit framebuffer dimensions/focus/visibility; it maintains no wire
+offsets. The shared driver owns injection, RAF stepping, exhaustion and cleanup.
+This game's exporter/route retain the fixed-rate check, seed/initialization,
+milestones, CPU references, ending-save reload and assertions. See the engine
+[testing guide](../../docs/guides/testing.md#optional-browser-replay-bridge) for
+the codec metadata and driver lifecycle contract. The expanded 1,890-byte wire
+per tick remains optional test data, not a replacement for the compact UPR file.
 
 [PROFILE.md](PROFILE.md) records complete-route CPU/allocation observations and
 short real SDL ordinary/boss measurements, with exact reproduction commands and

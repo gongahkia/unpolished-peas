@@ -627,3 +627,94 @@ manifest's every package path exists. Final ReleaseFast package passes 9/9 steps
 tests. Existing README diff against 1d202e9f is empty. The original Source Sans
 notice remains verbatim, including its inherited whitespace. Final documentation
 changes add the November 11 assessment to package paths and the non-README index.
+
+## 2026-11-12 — shared browser replay tooling
+
+Resolves the replay-tooling proposal in FRICTION while retaining its original
+finding. No gameplay or frame-tail investigation is included. Starting checkout
+c8f4cf7f was clean; toolchain is Zig 0.15.2 on Intel macOS. Existing README files
+and notices remain unchanged.
+
+`up.preview.developer.BrowserInput` now owns the existing Zig browser decoder
+and an allocation-free v2 encoder. The browser decoder path delegates to that
+codec. Exporters explicitly supply framebuffer size/focus/visibility (and optional
+resize epoch), since normalized snapshots omit that metadata. No ABI/UPR version
+change is introduced. The shared test-server `script/browser-authoring/replay.mjs`
+owns input injection, RAF stepping and lifecycle. Ashen retains references,
+milestones, seed/initial-save policy, 60 Hz guard and game assertions. Ordinary
+shipping execution never installs the driver.
+
+Changed implementation: engine codec/public preview aliases and API snapshot;
+Wasm/DOM input compatibility tests; shared replay driver/contract test and its
+build target; game exporter/route; archive-consumer harness. Documentation:
+FRICTION, GUIDE, this log and `docs/guides/testing.md`. The public-import fixture
+was stale before this change (the existing Ashen sources were absent); the first
+broad check failed only on that inventory. Regenerating it adds those 15 existing
+source entries and the rerun passes, without weakening the compatibility check.
+
+Exact commands from the engine root:
+
+```sh
+zig test src/browser_input.zig
+node script/browser-authoring/replay.test.mjs
+zig build test test-browser-input-v2 test-browser-replay-driver test-core-api test-docs -Dwith_sdl=false -j2 --summary all
+zig build test-browser-input test-browser-input-v2 test-browser-replay-driver test-replays test-core-api test-docs test-web-package -Dwith_sdl=false -j2 --summary all
+python3 script/test_ashen_causeway_external.py --output zig-out/diagnostics/ashen-replay-adapter-external-final
+```
+
+Results: standalone codec/imported input tests 17/17; shared driver contracts
+pass; broad build 85/85 steps and 328/328 tests; final compatibility/docs/web
+package build 54/54 steps and 43/43 tests. Logs:
+`zig-out/diagnostics/replay-{codec-tests,adapter-checks,adapter-final-checks}.log`.
+The independent JS DOM producer/Wasm test checks all wire bytes, allowing only
+ignored null-canvas coordinates to canonicalize to zero. It includes four
+controller identities and current/previous axes, pointer edges, physical keys,
+Unicode text/composition and existing replay/zero-update/catch-up fixtures.
+Driver contracts cover capacity and memory bounds without consumption, malformed
+size/HTTP errors, exhaustion, no repeated edges, cancellation within a RAF batch,
+pending-load disposal, streaming fallback, wrapper restoration and reinstallation.
+
+The final external consumer passes all 34 game tests, optional exporter, ordinary
+package/web and a 120-frame native launch; authored sources and notices survive.
+It verifies the shipping JS/HTML has no replay instrumentation and retains the
+exported wire/references beside its unmodified web artifact. Actual source tree
+`0eb1f2b7b93441db949a5ce051be9c2a00ff7d1d` (a worktree archive over c8f4cf7f)
+and hashes are in `zig-out/diagnostics/ashen-replay-adapter-external-final/result.json`.
+The first archive-consumer run also passed; its separate report remains in
+`zig-out/diagnostics/ashen-replay-adapter-external`.
+
+Real-browser reproduction uses the bundle and input from that same final
+consumer. Start the Safari service in a separate terminal and stop that owned
+process after the route finishes:
+
+```sh
+safaridriver -p 41245
+UP_SAFARI_WEBDRIVER_URL=http://127.0.0.1:41245 node dogfood/ashen-causeway/tools/browser-route.mjs --bundle zig-out/diagnostics/ashen-replay-adapter-external-final/web --input zig-out/diagnostics/ashen-replay-adapter-external-final/browser-route-input --output zig-out/diagnostics/ashen-replay-adapter-browser-final --browsers chromium,firefox,safari
+```
+
+Wasm SHA256 remains
+`6bfa7dc86962f2dbe0b2026f0eddc6bd40c2170942cf69302f9978f105191790`;
+wire SHA256 is
+`1403bf02521403f569bbc8ba0400cc374d0e8f5dc7695ad5c5319cafd1f3385f`.
+
+Final result: Chromium 157.0.8103.52, Firefox 158.0 and real Safari 18.6 all pass
+the complete 6,577-tick route, ending progression/save reload and six reference
+comparisons per browser (five route frames and continued). Every RGBA channel is
+within the unchanged tolerance 1 of the native CPU reference. Existing strict
+independent/game WebGL probes pass. All report failure=-1, resources=0,
+scheduledFrames=0, phase=destroyed and originalSaveRestored=true. Result/captures:
+`zig-out/diagnostics/ashen-replay-adapter-browser-final`; the earlier three-browser
+pass remains in `zig-out/diagnostics/ashen-replay-adapter-browser`. The owned
+Safari service and test servers are stopped. Final docs/driver recheck passes
+42/42 steps and 36/36 tests (`replay-adapter-docs-final.log` under root diagnostics).
+Formatting and diff checks pass; README changes against c8f4cf7f are empty.
+
+Limits remain explicit: roughly 12 MB of expanded test input, game-owned
+initialization and deterministic behavior, synthetic timestamps and normalized
+input only. This verifies neither physical/trusted input nor human pacing or
+frame performance; the native frame-tail investigation stays open. No source
+archive was published, no license was chosen or changed, and no deployment or
+push was performed.
+
+Implementation commits: `92e223de` (canonical codec/public compatibility) and
+`1a67647f` (shared driver, migration and archive verification).
