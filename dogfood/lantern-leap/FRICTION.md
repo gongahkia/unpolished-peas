@@ -24,3 +24,26 @@ bootstrap contract. Trusted Chromium interaction and strict readbacks then pass;
 startup failure and subsequent baseline captures remain under root
 `zig-out/diagnostics/two-games-baseline`. Broader verification follows the polish
 plan rather than being inferred from this startup check. Historical entries remain.
+
+## Traversal/recovery polish — 2026-11-12 (verification in progress)
+
+The old Enter handler always called resetRun, contradicting immediate-checkpoint
+respawn copy and discarding glows. Death Enter now uses the same checkpoint
+respawn as the timer; explicit R/left shoulder owns full restart. Jump buffering
+is bounded and consumed once, release changes height, and pause/death/restart
+clear pending jumps. Full ordinary-input keyboard/controller pilots collect all
+six glows, die/respawn, restart, finish and replay in 680 ticks each. This is game
+logic; no physics/checkpoint engine feature was needed.
+
+The half-resolution world and footer hid useful detail. A 160×80 world surface
+now composes into a separate 320×160 viewport inside a 320×200 Canvas, preserving
+sprite pixels and a clear floor/hazard line. Prepared authored text has fixed
+HUD fields; title/pause/death/completion copy is reviewed in actual Chromium
+captures. Music retries after output becomes ready; explicit audio unload and
+partial-init failure tests close the old host-lifetime resource assumption.
+
+Current progress.v2 stores checkpoint/current glows/preferences while reading
+valid legacy three-byte records. Failed replacement preserves good bytes and
+exposes pending/retry. Classification: game bugs and bounded presentation/design
+improvements, not engine defects. Cross-host, archive, motion and performance
+evidence remains to be completed; GUIDE and the dated review will record it.

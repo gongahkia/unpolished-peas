@@ -11,7 +11,7 @@ pub const Game = struct {
         .application = "lantern-leap",
         .width = game.width,
         .height = game.height,
-        .scale = 4,
+        .scale = 3,
         .resizable = true,
         .pause_policy = .unfocused,
         .clear_color = up.core.Color.rgb(4, 7, 18),
@@ -22,10 +22,10 @@ pub const Game = struct {
 
     pub fn init(self: *Game, ctx: *up.core.GameContext) !void {
         try self.state.init(ctx);
-        // Experimental developer tooling stays at the host boundary. Release
-        // and browser builds keep using the same embedded bytes.
+        // Atlas reload stays at the host boundary. Prepared font metrics stay
+        // immutable until a rebuild, matching their borrowed-layout lifetime.
         if (self.state.atlas) |atlas| _ = try sdl.developer.registerAtlasImage(atlas, "lantern-leap.png", .{});
-        if (self.state.font) |font| _ = try sdl.developer.registerFont(font, "lantern-leap.ttf", .{ .pixel_height = 8, .atlas_width = 128, .atlas_height = 128 });
+        // Prepared text borrows immutable font metrics; rebuild to change the font.
     }
 
     pub fn update(self: *Game, ctx: *up.core.GameContext, elapsed_seconds: f32) !void {

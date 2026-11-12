@@ -4,3 +4,6 @@
 pub const sprite_sheet_png = @embedFile("assets/lantern-leap.png");
 pub const ui_font_ttf = @embedFile("assets/lantern-leap.ttf");
 pub const background_music_ogg = @embedFile("assets/lantern-loop.ogg");
+pub const jump_wav = @embedFile("assets/jump.wav");
+pub const collect_wav = @embedFile("assets/collect.wav");
+pub const reset_wav = @embedFile("assets/reset.wav");
