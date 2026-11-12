@@ -57,3 +57,8 @@ preference/high-score write erase an unknown valid best. Writes wait for a
 successful re-read and merge the greater score while retaining an explicit new
 preference. A fault-injected store regression preserves the original 1000-point
 record while reads fail even though the underlying store accepts writes.
+
+Visual review follow-up: the death panel used to retain HIT -1: RECOVERING from
+its final damage tick. Suppress that playing-state notice after a breach so the
+immediate restart action is unambiguous. The regenerated nine-frame CPU route
+and full Chromium/Firefox/real Safari comparisons pass with channel tolerance 1.

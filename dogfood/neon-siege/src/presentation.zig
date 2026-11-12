@@ -70,7 +70,7 @@ pub fn draw(self: *game.Game, ctx: *up.core.GameContext) !void {
     if (self.save_failed) self.text.draw(c, .pending, 8, 174, pink) else {
         self.text.draw(c, .hull, 8, 174, muted);
         for (0..3) |index| c.fillRect(43 + @as(i32, @intCast(index)) * 10, 178, 7, 5, if (index < self.player.health) cyan else Color.rgb(45, 63, 81));
-        if (self.notice_ticks > 0 and self.screen == .playing) self.text.draw(c, switch (self.notice) {
+        if (self.notice_ticks > 0 and self.screen == .playing and !self.game_over) self.text.draw(c, switch (self.notice) {
             .hit => .hit,
             .heal => .heal,
             .pickup => .pickup,
