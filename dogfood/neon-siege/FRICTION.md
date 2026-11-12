@@ -51,3 +51,9 @@ Ordinary keyboard/controller routes reach wave four with damage/heal, sprint,
 pause, death and restart, without changing game state behind the inputs. Those
 checks do not stand in for the remaining native/browser/archive/motion/profiling
 verification. Historical friction entries remain above.
+
+Polish follow-up: a transient initial read failure cannot let a subsequent
+preference/high-score write erase an unknown valid best. Writes wait for a
+successful re-read and merge the greater score while retaining an explicit new
+preference. A fault-injected store regression preserves the original 1000-point
+record while reads fail even though the underlying store accepts writes.

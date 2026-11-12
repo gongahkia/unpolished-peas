@@ -67,6 +67,7 @@ pub fn draw(self: *game.Game, ctx: *up.core.GameContext) !void {
         .queued => .buffer,
         .unavailable => .unavailable,
         .back => .back,
+        .bonk => .low_ceiling,
         .none => .footer,
     } else .footer;
     self.text.draw(c, footer, 8, 183, if (self.save_failed) Color.rgb(255, 156, 139) else if (self.notice_ticks > 0) gold else muted);
@@ -78,6 +79,7 @@ pub fn draw(self: *game.Game, ctx: *up.core.GameContext) !void {
         self.text.centered(c, .objective, 78, ink);
         self.text.centered(c, .move, 98, ink);
         self.text.centered(c, .jump, 114, ink);
+        if (self.completion_unlocked) self.text.centered(c, .record_lit, 128, muted);
         self.text.centered(c, if (self.run_started and !self.completed) .continue_run else if (self.completed) .replay else .begin, 141, gold);
         if (self.load_problem) self.text.centered(c, .load_warning, 166, Color.rgb(255, 156, 139));
     } else if (self.screen == .paused) {

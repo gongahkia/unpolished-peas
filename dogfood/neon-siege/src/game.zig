@@ -88,6 +88,7 @@ pub const Game = struct {
     notice_ticks: u8 = 0,
     save_failed: bool = false,
     load_problem: bool = false,
+    preference_changed: bool = false,
     sprinting: bool = false,
     shot_sound: ?up.core.Audio.SoundHandle = null,
     pickup_sound: ?up.core.Audio.SoundHandle = null,
@@ -151,6 +152,7 @@ pub const Game = struct {
         actions.update(ctx.input.*);
         if (actions.wasPressed("game", "toggle-audio")) {
             self.audio_enabled = !self.audio_enabled;
+            self.preference_changed = true;
             self.saveSettings(ctx);
         }
         if (ctx.audio) |audio| self.syncMusic(audio);
@@ -403,6 +405,22 @@ pub const Game = struct {
             self.save_failed = true;
             return;
         };
+        // A failed initial read must not let a later preference write erase an
+        // unknown valid best. Re-read first, preserving the player's new choice.
+        if (self.load_problem) {
+            var previous: [6]u8 = undefined;
+            if (store.read("settings.v1", &previous)) |saved| {
+                if (saved.len == 6 and previous[0] == 1 and previous[1] <= 1) {
+                    self.best_score = @max(self.best_score, std.mem.readInt(u32, previous[2..6], .little));
+                    if (!self.preference_changed) self.audio_enabled = previous[1] == 1;
+                }
+            } else |err| {
+                if (err != error.NotFound and err != error.TooLarge) {
+                    self.save_failed = true;
+                    return;
+                }
+            }
+        }
         var bytes = [_]u8{ 1, @intFromBool(self.audio_enabled), 0, 0, 0, 0 };
         std.mem.writeInt(u32, bytes[2..6], self.best_score, .little);
         store.write("settings.v1", &bytes) catch {
@@ -411,6 +429,7 @@ pub const Game = struct {
         };
         self.save_failed = false;
         self.load_problem = false;
+        self.preference_changed = false;
     }
     fn play(self: *const Game, ctx: *up.core.GameContext, sound: ?up.core.Audio.SoundHandle, volume: f32) void {
         if (!self.audio_enabled) return;
@@ -810,4 +829,24 @@ test "restarts retain resources and three lifecycles unload their audio sources"
         try std.testing.expectError(error.InvalidSound, audio.play(sound, .{}));
         try std.testing.expectError(error.InvalidMusic, audio.playMusic(music, .{}));
     }
+}
+
+test "an unreadable existing best is preserved until safe recovery" {
+    var saves: up.testSupport.InMemorySaveStore = undefined;
+    saves.init(std.testing.allocator);
+    defer saves.deinit();
+    const original = [_]u8{ 1, 0, 232, 3, 0, 0 };
+    try saves.capability().write("settings.v1", &original);
+    var fault = @import("test_store.zig").ReadFault{ .parent = saves.capability() };
+    const r = try up.testSupport.HeadlessGameRunner(Game).initSeededWithSaveData(std.testing.allocator, width, height, default_seed, fault.capability());
+    defer r.deinit();
+    r.game.score = 120;
+    r.game.updateBestScore(&r.context);
+    var bytes: [6]u8 = undefined;
+    try std.testing.expectEqualSlices(u8, &original, try saves.capability().read("settings.v1", &bytes));
+    try std.testing.expect(r.game.save_failed);
+    fault.blocked = false;
+    r.game.saveSettings(&r.context);
+    try std.testing.expectEqualSlices(u8, &original, try saves.capability().read("settings.v1", &bytes));
+    try std.testing.expect(!r.game.save_failed and r.game.best_score == 1000 and !r.game.audio_enabled);
 }

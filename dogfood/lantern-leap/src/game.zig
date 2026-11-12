@@ -6,7 +6,7 @@ const sounds = @import("sounds.zig");
 const progress = @import("progress.zig");
 const ui = @import("ui.zig");
 pub const Screen = enum { title, playing, paused };
-pub const Notice = enum { none, glow, checkpoint, queued, unavailable, back };
+pub const Notice = enum { none, glow, checkpoint, queued, unavailable, back, bonk };
 
 pub const width: u32 = 320;
 pub const height: u32 = 200;
@@ -68,6 +68,9 @@ pub const Game = struct {
     audio_enabled: bool = true,
     save_failed: bool = false,
     load_problem: bool = false,
+    load_uncertain: bool = false,
+    preference_changed: bool = false,
+    replace_on_recovery: bool = false,
     jump_buffer: u8 = 0,
     jump_armed: bool = false,
     camera_x: f32 = 80,
@@ -151,6 +154,7 @@ pub const Game = struct {
         actions.update(ctx.input.*);
         if (actions.wasPressed("game", "audio")) {
             self.audio_enabled = !self.audio_enabled;
+            self.preference_changed = true;
             self.persistProgress(ctx);
         }
         if (ctx.audio) |audio| self.syncMusic(audio);
@@ -158,6 +162,7 @@ pub const Game = struct {
         const pause = actions.wasPressed("game", "pause");
         if (self.screen == .title) {
             if (primary) {
+                if (self.completed) self.replace_on_recovery = true;
                 if (!self.run_started or self.completed) self.resetRun();
                 self.screen = .playing;
                 self.clearJump();
@@ -166,6 +171,7 @@ pub const Game = struct {
             return;
         }
         if (actions.wasPressed("game", "new-run")) {
+            self.replace_on_recovery = true;
             self.resetRun();
             self.screen = .playing;
             self.persistProgress(ctx);
@@ -182,6 +188,7 @@ pub const Game = struct {
         }
         if (self.completed) {
             if (primary) {
+                self.replace_on_recovery = true;
                 self.resetRun();
                 self.persistProgress(ctx);
             }
@@ -221,11 +228,13 @@ pub const Game = struct {
         const direction = boolToFloat(actions.isDown("game", "right")) - boolToFloat(actions.isDown("game", "left"));
         self.player.velocity.x = direction * move_speed;
         if (direction != 0) self.player.facing_left = direction < 0;
-        if (self.player.grounded) self.player.coyote = coyote_ticks else if (self.player.coyote > 0) self.player.coyote -= 1;
+        const was_grounded = self.player.grounded;
+        if (was_grounded) self.player.coyote = coyote_ticks;
         if (self.jump_buffer > 0 and self.player.coyote > 0) self.jump(ctx);
         if (actions.wasReleased("game", "jump") and self.player.velocity.y < -70) self.player.velocity.y *= 0.5;
         self.moveAndCollide(elapsed_seconds);
         if (self.jump_buffer > 0 and self.player.grounded) self.jump(ctx);
+        if (self.player.grounded) self.player.coyote = coyote_ticks else if (!was_grounded and self.player.coyote > 0) self.player.coyote -= 1;
         try self.updateAnimation();
         self.collectNearby(ctx);
         self.activateCheckpoint(ctx);
@@ -312,6 +321,7 @@ pub const Game = struct {
                 self.player.grounded = true;
             } else if (self.player.velocity.y < 0) {
                 self.player.position.y = platform.y + platform.h;
+                self.notify(.bonk, 36);
             }
             self.player.velocity.y = 0;
         };
@@ -373,24 +383,29 @@ pub const Game = struct {
         };
         return .{ .best = self.best_collectibles, .finished = self.completion_unlocked, .audio = self.audio_enabled, .mask = mask, .checkpoint = @intCast(self.checkpoint), .started = self.run_started, .completed = self.completed };
     }
+    fn readStored(self: *Game, store: *up.core.SaveStore) up.core.SaveStore.Error!?progress.Record {
+        var bytes: [progress.size]u8 = undefined;
+        for ([_][]const u8{ progress.key, "progress.v1" }, 0..) |key, index| {
+            const saved = store.read(key, &bytes) catch |err| switch (err) {
+                error.NotFound => continue,
+                error.TooLarge => {
+                    self.load_problem = true;
+                    continue;
+                },
+                else => return err,
+            };
+            const loaded = if (index == 0) progress.decode(saved) else progress.legacy(saved);
+            if (loaded) |r| return r else |_| self.load_problem = true;
+        }
+        return null;
+    }
     fn loadProgress(self: *Game, ctx: *up.core.GameContext) void {
         const store = ctx.save_data orelse return;
-        var bytes: [progress.size]u8 = undefined;
-        var loaded: ?progress.Record = null;
-        if (store.read(progress.key, &bytes)) |saved| {
-            loaded = progress.decode(saved) catch null;
-            if (loaded == null) self.load_problem = true;
-        } else |err| {
-            if (err != error.NotFound) self.load_problem = true;
-        }
-        if (loaded == null) {
-            if (store.read("progress.v1", &bytes)) |saved| {
-                loaded = progress.legacy(saved) catch null;
-                if (loaded == null) self.load_problem = true;
-            } else |err| {
-                if (err != error.NotFound) self.load_problem = true;
-            }
-        }
+        const loaded = self.readStored(store) catch {
+            self.load_problem = true;
+            self.load_uncertain = true;
+            return;
+        };
         if (loaded) |r| {
             self.best_collectibles = r.best;
             self.completion_unlocked = r.finished;
@@ -401,11 +416,33 @@ pub const Game = struct {
             for (&self.collected, 0..) |*entry, i| entry.* = r.mask & (@as(u8, 1) << @intCast(i)) != 0;
         }
     }
+    fn recoverProgress(self: *Game, store: *up.core.SaveStore) bool {
+        const previous = self.readStored(store) catch {
+            self.save_failed = true;
+            return false;
+        };
+        if (previous) |r| {
+            self.best_collectibles = @max(self.best_collectibles, r.best);
+            self.completion_unlocked = self.completion_unlocked or r.finished;
+            if (!self.preference_changed) self.audio_enabled = r.audio;
+            if (!self.replace_on_recovery and r.started and !r.completed) {
+                const before = self.checkpoint;
+                self.checkpoint = @max(self.checkpoint, r.checkpoint);
+                self.run_started = true;
+                for (&self.collected, 0..) |*entry, i| entry.* = entry.* or r.mask & (@as(u8, 1) << @intCast(i)) != 0;
+                self.best_collectibles = @max(self.best_collectibles, self.collectedCount());
+                if (self.run_ticks == 0 and self.checkpoint != before) self.respawnAtCheckpoint();
+            }
+        }
+        self.load_uncertain = false;
+        return true;
+    }
     fn persistProgress(self: *Game, ctx: *up.core.GameContext) void {
         const store = ctx.save_data orelse {
             self.save_failed = true;
             return;
         };
+        if (self.load_uncertain and !self.recoverProgress(store)) return;
         const bytes = progress.encode(self.record());
         store.write(progress.key, &bytes) catch {
             self.save_failed = true;
@@ -413,6 +450,8 @@ pub const Game = struct {
         };
         self.save_failed = false;
         self.load_problem = false;
+        self.preference_changed = false;
+        self.replace_on_recovery = false;
     }
     fn play(self: *const Game, ctx: *up.core.GameContext, sound: ?up.core.Audio.SoundHandle, volume: f32) void {
         if (!self.audio_enabled) return;
@@ -646,7 +685,7 @@ test "last coyote opportunity is consumed once and release gives a lower jump" {
     try begin(r);
     r.game.player.position = .{ .x = 80, .y = 70 };
     r.game.player.grounded = false;
-    r.game.player.coyote = 2;
+    r.game.player.coyote = 1;
     var input = up.input.Input{};
     input.set(.action, true);
     try stepInput(r, &input);
@@ -785,4 +824,44 @@ test "three lifecycles reuse audio slots and ordinary restarts retain resources"
         try std.testing.expectError(error.InvalidSound, audio.play(sound, .{}));
         try std.testing.expectError(error.InvalidMusic, audio.playMusic(music, .{}));
     }
+}
+
+test "a low ceiling explains a blocked jump and held input does not bounce again" {
+    const r = try Runner.initSeeded(std.testing.allocator, width, height, default_seed);
+    defer r.deinit();
+    try begin(r);
+    r.game.collected[0] = true; // Isolate ceiling feedback from the nearby first collectible.
+    r.game.player.position = .{ .x = 48, .y = 74 };
+    r.game.player.velocity = .{};
+    r.game.player.grounded = true;
+    var input = up.input.Input{};
+    input.set(.action, true);
+    try stepInput(r, &input);
+    for (0..4) |_| {
+        if (r.game.notice == .bonk) break;
+        try stepInput(r, &input);
+    }
+    try std.testing.expect(r.game.notice == .bonk and r.game.player.velocity.y == 0 and r.game.jump_buffer == 0);
+    for (0..20) |_| try stepInput(r, &input);
+    try std.testing.expect(r.game.player.grounded and r.game.player.position.y == 74);
+}
+
+test "an unreadable existing checkpoint is merged only after safe recovery" {
+    var saves: up.testSupport.InMemorySaveStore = undefined;
+    saves.init(std.testing.allocator);
+    defer saves.deinit();
+    const original = progress.encode(.{ .best = 4, .mask = 15, .checkpoint = 1, .started = true, .audio = false });
+    try saves.capability().write(progress.key, &original);
+    var fault = @import("test_store.zig").ReadFault{ .parent = saves.capability() };
+    const r = try up.testSupport.HeadlessGameRunner(Game).initSeededWithSaveData(std.testing.allocator, width, height, default_seed, fault.capability());
+    defer r.deinit();
+    r.game.run_started = true;
+    r.game.persistProgress(&r.context);
+    var bytes: [progress.size]u8 = undefined;
+    try std.testing.expectEqualSlices(u8, &original, try saves.capability().read(progress.key, &bytes));
+    try std.testing.expect(r.game.save_failed);
+    fault.blocked = false;
+    r.game.persistProgress(&r.context);
+    try std.testing.expectEqualSlices(u8, &original, try saves.capability().read(progress.key, &bytes));
+    try std.testing.expect(!r.game.save_failed and r.game.checkpoint == 1 and r.game.collectedCount() == 4 and !r.game.audio_enabled);
 }

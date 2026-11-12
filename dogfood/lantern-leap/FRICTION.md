@@ -47,3 +47,11 @@ valid legacy three-byte records. Failed replacement preserves good bytes and
 exposes pending/retry. Classification: game bugs and bounded presentation/design
 improvements, not engine defects. Cross-host, archive, motion and performance
 evidence remains to be completed; GUIDE and the dated review will record it.
+
+Polish follow-up: transient read failures now block writes until a successful
+re-read can merge the existing best/completion, collected mask and checkpoint.
+An explicit full restart still replaces current-run progress after recovery.
+The regression uses a real in-memory store whose reads fail while writes remain
+available, proving that unknown valid bytes are not silently overwritten.
+Coyote time offers six airborne update opportunities; a blocked upward jump
+shows a low-ceiling message and consumes its buffer once.
