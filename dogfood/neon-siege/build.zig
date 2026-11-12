@@ -35,6 +35,37 @@ pub fn build(b: *std.Build) void {
     const package_step = b.step("package", "Build Neon Siege's portable desktop layout");
     package_step.dependOn(b.getInstallStep());
 
+    const verification_options = b.addOptions();
+    verification_options.addOption([:0]const u8, "application", b.allocator.dupeZ(u8, b.option([]const u8, "verification-id", "Isolated native verification application ID") orelse "verification-only") catch @panic("out of memory"));
+    verification_options.addOption(u32, "frame_limit", b.option(u32, "verification-frames", "Bounded native verification frames") orelse 1800);
+    const verification_module = b.createModule(.{ .root_source_file = b.path("src/verify_native.zig"), .target = target, .optimize = optimize, .imports = &.{
+        .{ .name = "unpolished-peas", .module = peas.module("unpolished-peas") }, .{ .name = "unpolished-peas-sdl3", .module = peas.module("unpolished-peas-sdl3") }, .{ .name = "neon-siege-assets", .module = game_assets },
+    } });
+    verification_module.addOptions("verification-options", verification_options);
+    const verification = b.addExecutable(.{ .name = "neon-siege-verification", .root_module = verification_module });
+    const install_verification = b.addInstallArtifact(verification, .{ .dest_dir = .{ .override = .{ .custom = "verification" } } });
+    b.step("build-verification", "Build opt-in native route/reload/profile host").dependOn(&install_verification.step);
+
+    // Opt-in developer executable; it is absent from package/web install steps.
+    const exporter = b.addExecutable(.{ .name = "export-replay", .root_module = b.createModule(.{
+        .root_source_file = b.path("src/export_replay.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{ .{ .name = "unpolished-peas", .module = peas.module("unpolished-peas") }, .{ .name = "neon-siege-assets", .module = game_assets } },
+    }) });
+    const export_run = b.addRunArtifact(exporter);
+    if (b.args) |args| export_run.addArgs(args);
+    b.step("export-browser-replay", "Export ordinary-input route, canonical wire and CPU references").dependOn(&export_run.step);
+
+    const profile = b.addExecutable(.{ .name = "profile-route", .root_module = b.createModule(.{
+        .root_source_file = b.path("src/profile_route.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{ .{ .name = "unpolished-peas", .module = peas.module("unpolished-peas") }, .{ .name = "neon-siege-assets", .module = game_assets } },
+    }) });
+    const install_profile = b.addInstallArtifact(profile, .{ .dest_dir = .{ .override = .{ .custom = "verification" } } });
+    b.step("build-profiling", "Build optional CPU workload observer").dependOn(&install_profile.step);
+
     const browser_target = b.resolveTargetQuery(.{ .cpu_arch = .wasm32, .os_tag = .freestanding });
     const browser_optimize = b.option(std.builtin.OptimizeMode, "browser-optimize", "Optimization mode for browser Wasm") orelse .ReleaseSmall;
     const browser_peas = b.dependency("unpolished_peas", .{ .target = browser_target, .optimize = browser_optimize, .with_sdl = false });
