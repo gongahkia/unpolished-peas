@@ -134,3 +134,179 @@ The profile wrapper now suppresses its periodic progress line (the earlier runs
 included that observer I/O), rejects failed game persistence, and the runner
 asserts no progress lines occurred. Only the corrected final run has that complete
 observation contract. The exact profile UUID directory was confirmed removed.
+
+## Save attribution follow-up — 2026-11-12
+
+**Conclusion: the historical 40.598 ms update spike was not reproduced; its cause
+remains unproven. No persistence or gameplay fix is justified by this sample.**
+Current observations confirm a real write at tick 555, accounting for most of its
+0.6–1.3 ms update. This cannot retroactively attribute the historical 40.6 ms
+update. A warm-up save took 14.73 ms. No extra targeted experiment was used after
+the initial comparison; the investigation stops at this bounded finding.
+
+Started from clean HEAD d6441b09, preserving the completed shared replay adapter.
+Historical `ashen-profile-polish` JSON/logs/CPU samples remain unchanged; their
+SHA256 values are in the new report. Measured source tree:
+`5dce64208f850ffabc3abcd0f3682bad92c9718f` (worktree over d6441b09).
+Exact source/binary hashes, command, power/display state and toolchain are in
+root `zig-out/diagnostics/ashen-save-attribution-20261112/result.json`.
+All three measured executables are retained under its `measured-binaries` child.
+Hardware remains Intel i5-8279U/Iris Plus 655, macOS 15.7.7, Zig 0.15.2,
+ReleaseFast, Canvas 480×270 and framebuffer 1920×1080.
+
+### Method and reproduction
+
+The optional verification host borrows a SaveStore wrapper during instrumented
+updates, timing actual parent operations and recording kind, byte count, replay
+tick, monotonic start/end and success/error. Preparation still performs real
+saves outside the measured window. Both modes use the same optimized binary;
+baseline uses the original store directly. Shipping main/web never imports the
+helpers. Observations stay outside Game, save bytes and replay input.
+
+Before the loop, instrumented mode allocates and touches storage for 2,048
+update records and 256 operations. Observer callbacks perform no allocation,
+logging, screenshots or readbacks.
+Overflow is reported and rejected. JSON, final saved-byte read/decode and state
+comparison occur after the loop. Actual parent allocation/file creation/write/
+sync/close/rename remains unchanged. The collector's tick intervals are
+partitioned by the existing host sample's `update_calls`, handling zero/catch-up
+updates without comparing clock origins. End-state digests and persisted bytes
+must equal the CPU replay at each run's actual end tick; all twelve runs pass.
+Three full CPU routes also match per-tick state/save oracles, retaining 31 update
+requests/2,530 bytes, zero draw/mix allocations and zero tracked live bytes after
+cleanup.
+
+Use a new UUID/output directory for another investigation; existing reports are
+never overwritten. Exact commands used, with builds finished before measurement
+and all CPU/native workloads serial:
+
+```sh
+cd dogfood/ashen-causeway
+zig build test test-profile-observer build-profiling -Doptimize=ReleaseFast -Dverification-id=profile-70e3a6dd-7dd8-4c59-9b9c-bb1ffef94072 -j2 --summary all
+cd ../..
+python3 script/test_profile_ashen_causeway.py
+python3 script/profile_ashen_causeway.py --identity profile-70e3a6dd-7dd8-4c59-9b9c-bb1ffef94072 --rounds 3 --compare-saves --output zig-out/diagnostics/ashen-save-attribution-20261112
+```
+
+The existing replay SHA256 is
+`eb104378fcd4242c63fda4503e3b8395172e1b4e9bae2a27a6c3114ca580a227`;
+no artifact needed regeneration. A fresh checkout first uses GUIDE's
+`ASHEN_ROUTE_EVIDENCE=zig-out/evidence/routes zig build test`.
+
+Three baseline and three instrumented runs per ordinary/boss case each record
+360 frames, discard 120 warm-up frames from the main distributions and retain
+240. Cases/modes reverse order in round two. Every retained frame has both
+expected render passes; no samples drop and no observer progress logs occur.
+Twelve retained frames contain multiple updates and are associated without loss.
+The guarded UUID namespace was removed after every run and is absent afterwards;
+production saves and prior reports are preserved.
+
+### Measurements
+
+Pooled nearest-rank distributions, 720 retained frames per row, milliseconds.
+Pooling describes these runs, not independence or a confidence interval.
+Per-round distributions and all correlated frames remain in the report.
+
+| Case / mode | Update median / p95 / max | Frame median / p95 / max | Frames >20 / >33.333 / >41.210 ms |
+| --- | --- | --- | --- |
+| Ordinary baseline | 0.0193 / 0.0493 / 1.3707 | 16.667 / 17.513 / 33.689 | 7 / 1 / 0 |
+| Ordinary instrumented | 0.0219 / 0.0441 / 1.3130 | 16.664 / 17.782 / 36.431 | 4 / 2 / 0 |
+| Boss/shock baseline | 0.0194 / 0.0357 / 0.1186 | 16.654 / 18.021 / 33.146 | 3 / 0 / 0 |
+| Boss/shock instrumented | 0.0214 / 0.0438 / 0.1066 | 16.654 / 17.665 / 23.961 | 9 / 0 / 0 |
+
+No retained update exceeds 5 ms (0/2,880); no retained frame exceeds the historical
+41.210248 ms (0/2,880). Eleven of the 1,440 warm-up frames do exceed that frame
+duration. Warm-up maxima in table order are 47.272, 98.543, 86.424 and 72.326 ms;
+their maximum-frame updates are only 0.022–0.071 ms. Much of those durations lies
+outside the three measured stage boundaries and remains unattributed. Raw warm-up
+records are retained; excluding them does not imply a frame-time guarantee.
+
+All six measured store operations are successful 40-byte writes: two per
+instrumented ordinary run, none in the measured boss windows. Tick 363 is in
+warm-up, tick 555 is retained:
+
+| Round | Tick 363 write (ms) | Tick 555 write (ms) | Tick 555 update (ms) | Tick 555 residual (ms) |
+| --- | --- | --- | --- | --- |
+| 1 | 0.886840 | 0.988771 | 1.012904 | 0.024133 |
+| 2 | 14.726347 | 1.291024 | 1.312961 | 0.021937 |
+| 3 | 1.451170 | 0.580526 | 0.594396 | 0.013870 |
+
+All-write median is 0.988771 ms, p95/max 14.726347 ms; six observations cannot
+establish a tail distribution. Instrumented ordinary residual update
+median/p95/max is 0.021938/0.043044/0.113178 ms. Residual is aggregate host update
+wall time minus nested store-call wall time; it includes other game/host work,
+observer recording and scheduling outside calls. Baseline has no measured store
+time, so its reported residual equals total update.
+
+The warm-up 14.743034 ms update contains the 14.726347 ms write, leaving
+0.016687 ms residual. The largest retained frame, 36.430782 ms at tick 555 in
+round three, contains just 0.594396 ms update, 0.580526 ms write and 35.615245 ms
+upload/present. It is not an update-dominated recurrence of the historical sample.
+Upload/present includes driver/swapchain waits, not GPU execution time.
+
+Controlled observer cost uses a no-op parent, not disk: 40 alternating batches
+of 200 update/write pairs, discarding four batches. Median cost per pair is
+0.002025 µs baseline and 0.151485 µs instrumented (difference 0.149460 µs;
+instrumented p95 0.249935 µs). This measures wrapper, four clocks and bounded
+recording together. Real native paired update-median differences range from
+−5.765 to +15.932 µs; variation exceeds controlled overhead, so this proves
+neither zero cost nor a stable native slowdown. All batches remain in
+`observer-overhead.json`. No machine-specific timing gate was added to CI.
+
+### Checks, confidence and next measurement
+
+Optimized game/observer/build checks pass 18 steps/66 tests (34 game, 32 observer
+and imported game tests). Python association tests pass three cases, including
+zero/multiple updates and rejection of incomplete/misattributed/failed records.
+Collector tests use controlled clocks/stores for association, both overflows,
+disabled clocks, storage errors/failed-write preservation and byte-identical
+replay. Ordinary Debug test/observer/web/package passes 23 steps/66 tests.
+Additional exact check from the engine root:
+
+```sh
+zig build test-storage test-core-api test-public-import-inventory -Dwith_sdl=false -j2 --summary all
+```
+
+It passes 10 steps/9 tests, including native atomic replacement/failure/retry.
+Logs: root `zig-out/diagnostics/ashen-save-{observer-build-final,normal-checks,engine-checks}.log`.
+An initial name-shadowing compile failure is retained in
+`ashen-save-observer-build.log`; it produced no measurements.
+
+Final review additionally made post-loop report errors release game/observer
+resources before propagating, and writes available operation records before
+rejecting mismatched save bytes. A deterministic missing-save test exercises that
+cleanup without native timing. These changes are confined to untimed reporting;
+the matrix above describes the retained measured source/binaries, before that
+error-path hardening. No further performance experiment was run.
+
+Final hardening build/check, from the game directory:
+
+```sh
+zig build test-profile-observer build-profiling -Doptimize=ReleaseFast -Dverification-id=profile-70e3a6dd-7dd8-4c59-9b9c-bb1ffef94072 -j2 --summary all
+```
+
+Passes 15 steps/33 tests; missing and short saved blobs fail reporting while
+still releasing resources, and short reports contain only initialized saved
+bytes. Log: root `zig-out/diagnostics/ashen-save-observer-final-checked.log`.
+The earlier cleanup-test compile used AudioMixer instead of the GameContext
+Audio service; that failed build is retained in `ashen-save-observer-final.log`
+and produced no measurement. Final storage/API/inventory checks pass again in
+`ashen-save-engine-final.log`. Docs plus the existing shared replay-driver test
+pass 42 steps/36 tests (`ashen-save-docs-checks.log`). Ordinary web Wasm retains
+SHA256 `6bfa7dc86962f2dbe0b2026f0eddc6bd40c2170942cf69302f9978f105191790`.
+The final docs-only rerun, `zig build test-docs -Dwith_sdl=false -j2 --summary all`,
+passes 40 steps/36 tests (`ashen-save-docs-final.log`).
+
+Confidence is high in association and the observed time within the parent write
+boundary. That interval includes possible descheduling while the call is active;
+it does not identify file.sync, another syscall or the storage device as the
+cause. The original update tail remains unattributed. No sync, save, atomic
+replacement, failure propagation, format or durability behavior changed; no
+asynchronous/deferred persistence or engine optimization was introduced.
+
+If this becomes a recurring play issue, the next measurement is a fresh bounded
+capture with the same association plus a platform scheduler/file-I/O trace, and
+optional sub-operation timestamps around temporary creation, write, sync, close
+and rename. This is a proposed follow-up, not an experiment performed here. A
+persistence-policy change requires an explicit durability/feedback tradeoff.
+These observations support no universal frame-rate or cross-hardware claim.

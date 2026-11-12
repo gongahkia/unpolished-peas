@@ -302,7 +302,7 @@ Reproduce/check: game `zig build test web -j2 --summary all`; the new test exerc
 empty/committed commands, unchanged weapon, lantern success and stale-flag clearing.
 Status resolved with 34 passing tests; no workaround or framework feature proposed.
 
-## Native save/update tail: attribution remains open
+## Native save/update tail: historical attribution gap
 
 Task: profile actual ordinary and shock combat without hiding rare stalls.
 Context: 50511dde production code plus final profiling helpers, Intel i5/Iris Plus,
@@ -329,3 +329,46 @@ periodic progress line occurred once in its ordinary measurement window. Profile
 mode now suppresses it, and the runner rejects such logs and failed persistence.
 Final one-round results pass those checks. Earlier numbers retain their known
 observer-I/O limitation; ordinary game save work remains intentionally timed.
+
+### Bounded follow-up — 2026-11-12
+
+Status: investigation completed with the historical cause unproven; no fix
+justified. The original observation above remains historical evidence, unchanged
+on disk. Starting at d6441b09 with the completed replay adapter, optional native
+verification now wraps actual SaveStore calls and records bounded, preallocated
+tick/start/end/outcome data. The host's update counts associate zero/multiple
+fixed updates with each frame. No observers enter production game state, saves,
+input or shipping bundles. PROFILE's November 12 section records exact commands,
+source/binary hashes, machine context, distributions, overhead and limits.
+
+Three baseline plus three instrumented ordinary windows and the same boss/shock
+matrix pass, each with 120 warm-up/240 retained presented frames. Actual
+synchronous saves remain in both modes. At tick 555, observed writes take
+0.581–1.291 ms, with total updates 0.594–1.313 ms; the historical 40.598 ms update
+does not recur. A warm-up write takes 14.726 ms inside a 14.743 ms update, so
+short medians do not promise bounded save latency. The largest retained frame,
+36.431 ms, spends 35.615 ms in upload/present and only 0.594 ms in update.
+Larger startup/warm-up frame tails also remain in the raw evidence.
+
+The current data locates elapsed time within observed write boundaries, not a
+specific syscall/device; OS descheduling during a call remains possible. Across
+2,880 retained frames, no update exceeds 5 ms and no frame exceeds historical
+41.210248 ms. This small local sample does not estimate a general recurrence
+rate or establish a frame-time guarantee. Classification remains an attribution
+limit at a synchronous service boundary, with potential player impact if stalls
+recur, rather than a demonstrated engine correctness defect.
+
+Evidence: root `zig-out/diagnostics/ashen-save-attribution-20261112/result.json`,
+per-case native logs, correlated frame/operation JSON and compressed CPU samples.
+All twelve native endpoints match CPU gameplay state and saved bytes; resources
+clean up and the isolated UUID namespace is absent. Controlled no-op-store
+measurements show approximately 0.149 µs extra median observer cost per update/
+write pair; native run variation is larger, so overhead is not assumed free.
+No extra targeted experiment was used. No sync calls, saves, error propagation,
+replacement semantics, format or durability policy changed.
+
+Next measurement, if recurrence warrants it: the same bounded tick/frame capture
+with scheduler/file-I/O tracing and optional create/write/sync/close/rename
+sub-operation markers. A policy/coalescing/async change would require a separate
+durability and user-feedback decision. This follow-up neither reopens replay
+tooling ergonomics nor adds an architectural persistence change.

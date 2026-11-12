@@ -179,6 +179,15 @@ short real SDL ordinary/boss measurements, with exact reproduction commands and
 boundaries. The optional `build-profiling`/`profile-route` targets do not change
 normal run/package output.
 
+For save/update attribution, `build-profiling` also builds a controlled observer-
+cost executable. `script/profile_ashen_causeway.py --compare-saves` runs paired
+baseline/instrumented ordinary and boss windows using the same built binary and
+real synchronous saves. Use a fresh `profile-UUID` and fresh report directory;
+the runner refuses to overwrite evidence. PROFILE's November 12 section contains
+the full build/run commands and results. Instrumentation is opt-in through the
+verification host's `ASHEN_PROFILE_SAVES=1`, absent from ordinary play/web output.
+Do not use replay's accelerated browser driver to measure native frame time.
+
 For a slowed combat capture review, add `--motion` to `tools/browser-route.mjs`
 and select one browser. For example, from the engine root:
 

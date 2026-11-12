@@ -718,3 +718,69 @@ push was performed.
 
 Implementation commits: `92e223de` (canonical codec/public compatibility) and
 `1a67647f` (shared driver, migration and archive verification).
+
+## 2026-11-12 — bounded native save/update attribution
+
+Read the attached goal objective and began at clean d6441b09, preserving all
+completed replay work and historical `ashen-profile-polish` artifacts. The raw
+historical frame is host index 254 with exactly one update, input tick 555:
+40.598397 ms update/41.210248 ms frame. Its separate CPU sample is 0.021635 ms
+with a 40-byte update allocation, which alone does not establish a native cause.
+
+Added verification-only `profile_saves.zig` (bounded collector and transparent
+SaveStore wrapper), `profile_state.zig` (untimed gameplay oracle digest) and
+`profile_observer_bench.zig` (controlled overhead). Native verification optionally
+observes real store operations, serializes after the loop and validates persisted
+bytes. CPU profiling adds per-tick state/save oracles outside timed work. The
+runner correlates host update counts to ticks, handles catch-up/zero updates,
+retains failures/raw data/hashes, alternates modes and rejects report overwrite.
+The optional build/test targets and public import inventory include these files.
+No production game or persistence implementation changed.
+
+PROFILE records exact commands, pooled/per-round distributions, write/residual
+measurements and limitations; FRICTION records the final assessment. Fresh
+report: root `zig-out/diagnostics/ashen-save-attribution-20261112/result.json`,
+measured tree `5dce64208f850ffabc3abcd0f3682bad92c9718f`, Zig 0.15.2/ReleaseFast,
+Intel i5-8279U/Iris Plus, macOS 15.7.7. Builds finished before the serial three
+CPU routes and twelve SDL windows. Historical report hashes remain unchanged.
+
+All cases pass presentation, no-drop and cleanup checks; all twelve native
+endpoints match the CPU state/save oracle. The guarded UUID namespace is absent.
+Across 2,880 retained frames, the 40.598 ms update tail does not recur; observed
+tick-555 writes take 0.581–1.291 ms. A warm-up save takes 14.726 ms, and larger
+warm-up frame tails remain in the raw evidence. The retained 36.431 ms maximum
+is dominated by upload/present. No causal syscall/device attribution follows.
+Measured no-op-store observer overhead is 0.149 µs extra median per update/write
+pair; paired native median variation is larger. No extra experiment was used.
+
+Checks: optimized build/game/observer 18 steps/66 tests; ordinary Debug test/
+observer/web/package 23 steps/66 tests; root storage/core API/import inventory
+10 steps/9 tests; three deterministic Python association tests. Exact commands
+and logs are linked in PROFILE. The first optimized build failed on Zig local
+name shadowing, was corrected before measuring and is retained in its separate
+build log. No failed measurement is represented as a success.
+
+Conclusion: historical update spike not reproduced, cause still unproven, no fix
+justified. Keep actual save durability/error/replacement behavior. The concrete
+next proposal is a bounded correlated scheduler/file-I/O trace if stalls recur,
+with sub-operation markers before considering a persistence-policy tradeoff.
+No README, license, replay adapter, deployment, publication or push changed.
+
+Final untimed reporting review additionally preserves cleanup on report/read
+errors and bounds short saved-byte reports. The verification-root deterministic
+test covers missing/short blobs and resource release. Final optimized optional
+build/observer tests pass 15 steps/33 tests, root persistence/API/inventory passes
+10 steps/9 tests again, and docs/shared replay-driver passes 42 steps/36 tests.
+The comparison's three exact executables are retained as `measured-binaries`
+beside its report; measured-loop code is unchanged by this reporting hardening.
+The failed initial cleanup-test AudioMixer type check is retained separately;
+no failed build was used for measurements. Ordinary web Wasm still has SHA256
+`6bfa7dc86962f2dbe0b2026f0eddc6bd40c2170942cf69302f9978f105191790`.
+
+Diagnostic tooling commit: `2ed5c2a1`. There is no performance/storage fix commit,
+because the bounded comparison did not justify one. Final completion audit
+rechecked all twelve window results, three CPU routes, exact retained executable
+hashes, preserved historical report hashes and absent test namespace.
+The final docs-only check passes 40 steps/36 tests. Formatting/diff checks pass,
+and README changes against d6441b09 are empty; no owned measurement processes
+remain.
