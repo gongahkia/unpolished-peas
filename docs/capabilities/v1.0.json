@@ -1,0 +1,176 @@
+{
+  "schema_version": 1,
+  "contract_version": "v1.0",
+  "browser_baseline": "current stable evergreen desktop releases of Chromium, Firefox, and Safari",
+  "status_definitions": {
+    "supported": "Part of the v1.0 release contract and exercised by the selected required CI lane.",
+    "preview": "Available for evaluation but excluded from the v1.0 release compatibility guarantee.",
+    "unsupported": "Not implemented or not offered by the v1.0 runtime contract.",
+    "removed": "Deliberately absent from the v1.0 runtime contract."
+  },
+  "stable_core": [
+    {
+      "id": "lifecycle",
+      "label": "Lifecycle",
+      "requirement": "init once, fixed-step update, and one draw per presented frame"
+    },
+    {
+      "id": "drawing_text",
+      "label": "Drawing and text",
+      "requirement": "Canvas primitives, sprites, and deterministic text"
+    },
+    {
+      "id": "keyboard_pointer",
+      "label": "Keyboard and pointer",
+      "requirement": "normalized keyboard and pointer state"
+    },
+    {
+      "id": "audio",
+      "label": "Audio",
+      "requirement": "bounded PCM playback and diagnostics"
+    },
+    {
+      "id": "assets",
+      "label": "Assets",
+      "requirement": "raw image, font, and audio asset loading"
+    },
+    {
+      "id": "fixed_timestep",
+      "label": "Fixed timestep",
+      "requirement": "documented fixed-step timing and interpolation"
+    },
+    {
+      "id": "packaging",
+      "label": "Packaging",
+      "requirement": "portable desktop package or static browser bundle"
+    },
+    {
+      "id": "deterministic_hooks",
+      "label": "Deterministic hooks",
+      "requirement": "headless commands, replay input, and local diagnostics"
+    }
+  ],
+  "targets": [
+    {
+      "id": "macos",
+      "label": "macOS",
+      "kind": "desktop",
+      "renderers": [
+        {
+          "id": "sdl_gpu",
+          "label": "SDL GPU",
+          "status": "supported",
+          "stable_core": ["lifecycle", "drawing_text", "keyboard_pointer", "audio", "assets", "fixed_timestep", "packaging", "deterministic_hooks"],
+          "ci": {"pull_request": {"runner": "macos-15-intel", "command": "bash script/test_stable_core_capability.sh macos-sdl_gpu"}, "nightly": {"runner": "macos-15-intel", "command": "bash script/test_stable_core_capability.sh macos-sdl_gpu"}, "release": {"runner": "macos-15-intel", "command": "bash script/test_stable_core_capability.sh macos-sdl_gpu"}}
+        },
+        {
+          "id": "opengl",
+          "label": "OpenGL 3.3",
+          "status": "preview",
+          "stable_core": ["lifecycle", "drawing_text", "keyboard_pointer", "audio", "assets", "fixed_timestep", "packaging", "deterministic_hooks"]
+        }
+      ]
+    },
+    {
+      "id": "linux",
+      "label": "Linux",
+      "kind": "desktop",
+      "renderers": [
+        {
+          "id": "sdl_gpu",
+          "label": "SDL GPU",
+          "status": "supported",
+          "stable_core": ["lifecycle", "drawing_text", "keyboard_pointer", "audio", "assets", "fixed_timestep", "packaging", "deterministic_hooks"],
+          "ci": {"pull_request": {"runner": "ubuntu-latest", "command": "bash script/test_stable_core_capability.sh linux-sdl_gpu"}, "nightly": {"runner": "ubuntu-latest", "command": "bash script/test_stable_core_capability.sh linux-sdl_gpu"}, "release": {"runner": "ubuntu-latest", "command": "bash script/test_stable_core_capability.sh linux-sdl_gpu"}}
+        },
+        {
+          "id": "opengl",
+          "label": "OpenGL 3.3",
+          "status": "preview",
+          "stable_core": ["lifecycle", "drawing_text", "keyboard_pointer", "audio", "assets", "fixed_timestep", "packaging", "deterministic_hooks"]
+        }
+      ]
+    },
+    {
+      "id": "windows",
+      "label": "Windows",
+      "kind": "desktop",
+      "renderers": [
+        {
+          "id": "sdl_gpu",
+          "label": "SDL GPU",
+          "status": "supported",
+          "stable_core": ["lifecycle", "drawing_text", "keyboard_pointer", "audio", "assets", "fixed_timestep", "packaging", "deterministic_hooks"],
+          "ci": {"pull_request": {"runner": "windows-2022", "command": "pwsh -File script/test_stable_core_capability.ps1 windows-sdl_gpu"}, "nightly": {"runner": "windows-2022", "command": "pwsh -File script/test_stable_core_capability.ps1 windows-sdl_gpu"}, "release": {"runner": "windows-2022", "command": "pwsh -File script/test_stable_core_capability.ps1 windows-sdl_gpu"}}
+        },
+        {
+          "id": "opengl",
+          "label": "OpenGL 3.3",
+          "status": "preview",
+          "stable_core": ["lifecycle", "drawing_text", "keyboard_pointer", "audio", "assets", "fixed_timestep", "packaging", "deterministic_hooks"]
+        }
+      ]
+    },
+    {
+      "id": "chromium",
+      "label": "Chromium",
+      "kind": "browser",
+      "renderers": [
+        {
+          "id": "webgl2",
+          "label": "WebGL 2",
+          "status": "preview",
+          "stable_core": ["lifecycle", "drawing_text", "keyboard_pointer", "audio", "assets", "fixed_timestep", "packaging", "deterministic_hooks"]
+        },
+        {
+          "id": "webgpu",
+          "label": "WebGPU",
+          "status": "preview",
+          "stable_core": ["lifecycle", "drawing_text", "keyboard_pointer", "audio", "assets", "fixed_timestep", "packaging", "deterministic_hooks"],
+          "ci": {"nightly": {"runner": "macos-15", "command": "zig build test-web-proof-game-matrix && zig build test-browser-renderer-parity && zig build benchmark-browser-workloads"}}
+        }
+      ]
+    },
+    {
+      "id": "firefox",
+      "label": "Firefox",
+      "kind": "browser",
+      "renderers": [
+        {
+          "id": "webgl2",
+          "label": "WebGL 2",
+          "status": "preview",
+          "stable_core": ["lifecycle", "drawing_text", "keyboard_pointer", "audio", "assets", "fixed_timestep", "packaging", "deterministic_hooks"],
+          "ci": {"nightly": {"runner": "macos-15-intel", "command": "UP_BROWSER=firefox zig build test-web-proof-game-matrix"}}
+        },
+        {
+          "id": "webgpu",
+          "label": "WebGPU",
+          "status": "unsupported",
+          "stable_core": ["lifecycle", "drawing_text", "keyboard_pointer", "audio", "assets", "fixed_timestep", "packaging", "deterministic_hooks"]
+        }
+      ]
+    },
+    {
+      "id": "safari",
+      "label": "Safari",
+      "kind": "browser",
+      "renderers": [
+        {
+          "id": "webgl2",
+          "label": "WebGL 2",
+          "status": "preview",
+          "stable_core": ["lifecycle", "drawing_text", "keyboard_pointer", "audio", "assets", "fixed_timestep", "packaging", "deterministic_hooks"],
+          "ci": {"nightly": {"runner": "macos-15", "command": "UP_SAFARI_RENDERERS=webgl2 script/test_safari_proof_game_matrix.sh"}}
+        },
+        {
+          "id": "webgpu",
+          "label": "WebGPU",
+          "status": "preview",
+          "stable_core": ["lifecycle", "drawing_text", "keyboard_pointer", "audio", "assets", "fixed_timestep", "packaging", "deterministic_hooks"],
+          "ci": {"nightly": {"runner": "macos-15", "command": "UP_SAFARI_RENDERERS=webgpu script/test_safari_proof_game_matrix.sh"}}
+        }
+      ]
+    }
+  ]
+}

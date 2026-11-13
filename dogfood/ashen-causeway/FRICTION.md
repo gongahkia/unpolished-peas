@@ -1,0 +1,374 @@
+# Ashen Causeway — framework friction
+
+Started 2026-11-10 at engine revision 1d202e9f. This is the canonical report.
+No engine correctness defect was demonstrated by this game. Complete native and
+browser routes are verified; the [final assessment](ASSESSMENT-2026-11-11.md)
+retains the pacing, hardware and profiling limits. Open investigations below do
+not imply broader platform validation.
+
+## Observations
+
+- Fixed-tick, game-owned combat is ordinary Zig and can be tested without a
+  window. No RPG subsystem is requested from Peas.
+- Existing starter and dogfood projects provide public package build recipes,
+  portable save blobs, authored text and explicit audio cleanup. Their integration is verified below through complete native/browser routes
+  and an archive consumer; broader hardware/pacing checks remain separate.
+
+## Required issue record
+
+For each demonstrated significant issue retain task, exact reproduction command,
+platform/toolchain/build/revision, expected and observed result, API/source
+locations, logs/captures/minimal reproduction, classification, severity/impact,
+workaround and cost, proposed improvement, resolution/regression and final status.
+Do not promote untested expectations into framework defects.
+
+## Verified facilities — 2026-11-10
+
+At game base aea32d01 with Zig 0.15.2/Debug on Intel macOS, the generated starter
+build recipe accepted this game through `unpolished-peas` and
+`unpolished-peas-sdl3`, and its browser-core/runtime package modules. Reproduction:
+`cd dogfood/ashen-causeway` then `zig build test web -j2 --summary all`.
+Observed: 11 tests and the Wasm build pass; a 120-frame native run succeeds.
+Physical-key/pointer/controller ActionMap bindings required no backend imports.
+Headless GameProtocol cleanup exercised three lifecycles with the test allocator.
+Classification: facilities working as documented; no workaround or engine change.
+See PROGRESS.md for browser readback smoke evidence and its limits.
+
+## Save integration — 2026-11-10
+
+Task: persist a complete RPG checkpoint/equipment record and recover after rejected
+writes. Reproduce from the game directory with `zig build test web -j2`, serve
+`zig-out/web` on loopback port 8114 and run from the engine root:
+`PEAS_SMOKE_BROWSERS=chromium,firefox node dogfood/ashen-causeway/tools/browser-smoke.mjs`.
+Context: Intel macOS, Zig 0.15.2, native Debug/browser ReleaseSmall, base c09375b1.
+Public APIs: GameContext.save_data, SaveStore.read/write, InMemorySaveStore;
+game sources: src/save.zig and Game.load/persist in src/game.zig.
+Expected/observed: a failed replacement retains the good blob, reads and retry
+continue to work. Native allocator-failure tests and real Chromium/Firefox quota
+injection confirmed this behavior; actual reload restored the selected weapon.
+Evidence: game zig-out/evidence/browser-smoke.json and save-failed PNGs, plus the
+deterministic tests. Category: supported facility working as documented; severity
+none, workaround/cost none. Game-owned byte encoding, validation and warning UI
+remain ordinary authoring responsibilities. No serialization engine is proposed.
+
+## Game combat interruption loop (resolved game bug)
+
+Author task: make enemies stagger without allowing unlimited attack interruption.
+Context: Intel macOS, Zig 0.15.2, Debug, baseline 5fea8558's 72-tick stagger guard;
+relevant game API/source: Enemy.stagger_guard and World.tick in src/world.zig.
+Expected: repeated light hits leave an enemy a chance to complete anticipation.
+Observed: the guard expired before stagger + recovery + windup completed, so
+repeated attacks could keep restarting anticipation. Severity medium, combat
+fairness; classification game bug, not an engine defect or missing facility.
+
+Regression: `zig test dogfood/ashen-causeway/src/world.zig --test-filter 'repeated light hits'`.
+The stress fixture replenishes stamina/HP and holds positions to isolate combat
+interruption; it is not a normal-input playthrough. A temporary copy of the
+current world/combat modules with `e.stagger_guard = 180` replaced by `72` fails
+that assertion (`saw_active` is false, exit 1). The current 180-tick version
+passes. This gives the enemy enough resistance to complete an attack while
+allowing initial stagger. No workaround/runtime facility or framework API is
+needed; resolution is game-owned timing policy with this regression. Final
+status: resolved in b57d06b1, subject to ordinary encounter play review.
+
+## Combat presentation and audio facilities
+
+The public Canvas lines/primitives express game-owned silhouettes and attack
+regions without a renderer change. Public Audio.loadWav/loadMusic(.wav), play,
+setMusicVolume, unloadSound and unloadMusic support an eight-second original
+ambient score plus seven effects. Ownership is explicit in src/sound.zig;
+scene/death resets retain reusable sources and shutdown releases them. The WAV
+score is larger than OGG but small and reproducible without an external encoder
+(352,844 encoded bytes). This is an asset choice, not a demonstrated engine gap.
+No engine change is requested. Tests verify decoded sources, finite nonzero PCM,
+zero-volume silence and stale handles after release across three cycles.
+
+## Ending save recovery (resolved game bug)
+
+Task: recover when the final progression write is rejected. Baseline c767c692,
+Intel macOS/Zig 0.15.2, Debug/native headless GameProtocol. Expected: victory
+accurately reports pending persistence and allows retry. Observed in code and
+captured ending screen: unconditional "Your journey is saved" text; the victory
+menu ignored the pause/save control. This was a medium-severity game UI/state-flow
+bug, not a SaveStore defect. Sources: Game.menu's victory branch and Game.draw
+in src/game.zig; the public SaveStore already retained good data on rejection.
+
+Reproduce/check: `cd dogfood/ashen-causeway && zig build test -j2`. The rejected-
+write test now enters the ending with a failing store, renders its warning,
+restores storage, presses Escape, and decodes a successfully saved completed
+journey. Resolution: conditional status text and Escape/Start retry at victory.
+No engine workaround or framework improvement is needed. Status: resolved with
+regression coverage; real-browser final-write rejection is still a separate
+full-route verification item.
+
+## Authored text ownership and portable UI (working facility)
+
+Task: replace debug text with readable authored labels while bounding allocations
+and preserving cleanup. Context: base c46f228c, Intel macOS, Zig 0.15.2, native
+Debug/ReleaseFast and browser ReleaseSmall. Public APIs: AssetCollection.font,
+Font.layoutText, TextLayout.draw/deinit and Font.drawText; implementation in
+src/typography.zig and Game.init/deinit in src/game.zig. Expected/observed: fonts
+and static layouts prepare once, layouts release before their borrowed font,
+partial initialization releases prior allocations, and drawing needs no new
+allocation. Exhaustive allocation-failure walking and a drawing check with a
+failing allocator pass. Static copy is checked against logical width budgets.
+
+The game keeps a bounded static copy catalog and explicit heading/body styles;
+numeric HUD text uses direct allocation-free drawing. This is game-owned UI
+organization, not evidence for a new engine UI/caching subsystem. Browser
+readback/menu/reload checks pass in Chromium, Firefox and Safari 18.6. The Safari
+check uses independent and game renderer probes, preserving the existing one-
+channel-unit tolerance and exact red-pixel contract. Screenshots/JSON live in the
+game's zig-out/evidence directory. Classification: documented facilities working,
+severity none, no workaround or engine API change. Full-game profiling remains
+separate from this zero-allocation text-draw check.
+
+## Complete replay through real hosts: developer bridge gap (historical finding)
+
+Task: reuse a successful public UPR fixed-input replay to check the same whole
+journey in SDL and browser hosts, preserving actual rendering/storage. Context:
+game baseline 665bb036, Zig 0.15.2, Intel macOS; native ReleaseFast and archive
+browser ReleaseSmall; Chromium 157, Firefox 158, Safari 18.6. Reproduction:
+GUIDE's external/native/export-browser-replay/browser-route commands. Evidence:
+root `zig-out/diagnostics/ashen-{external,native,browser-route}/result.json`,
+logs and six milestone PNG/readbacks per browser. All three completed the route,
+reloaded the ending, and matched full CPU reference frames at tolerance 1.
+
+Expected: reuse the recorded normalized input through an existing developer-host
+replay adapter. Observed: public parseInputReplay/applyFrame plus GameContext's
+borrowed input support the SDL wrapper directly, but the browser host has no
+comparable ready-made UPR injection adapter. A developer-only exporter maps
+Input.Snapshot to the existing browser wire ABI v2 (1,890 bytes/frame); the test
+server wraps input imports and schedules synthetic RAF callbacks. Sources:
+`src/export_browser_replay.zig`, `tools/browser-route.mjs`, public
+`up.preview.developer.parseInputReplay`, `Input.Snapshot.extended.encode`, and
+engine `src/browser/input_snapshot.zig`, `src/browser/input.mjs`. No backend
+imports enter game rules and no engine defect is inferred.
+
+Classification: missing developer-tooling convenience, low severity for players,
+medium verification maintenance cost. Workaround: roughly 120 lines of Zig
+export/reference generation and a browser test shim, with about 12 MB of expanded
+wire input for this route. It duplicates ABI field offsets and must follow wire
+format changes. Runtime cost is restricted to optional verification builds and
+test-server responses; the shipping game/bundle has none of it. Synthetic time
+makes these checks unsuitable for frame-rate measurement or trusted-input claims.
+
+Proposed improvement: a reusable preview/test-host adapter that accepts the public
+replay format or a canonical Snapshot-to-browser-wire encoder. Keep it optional,
+reuse existing deterministic input semantics, and retain the ordinary shipping
+host. This is a tooling proposal, not a request for an RPG framework or new input
+model. Status: integration verified with the game-owned bridge; proposal remains
+open. Existing renderer diagnostics, independent probes and compareReference
+readbacks were reusable unchanged and removed the need for a second renderer test
+system. Trusted input/audio smoke tests remain separate.
+
+### Resolution — shared optional adapter, 2026-11-12
+
+The preceding finding and results are retained as history. The tooling proposal
+is now resolved: `up.preview.developer.BrowserInput` provides the canonical Zig
+encoder/decoder for the existing wire ABI, and
+`script/browser-authoring/replay.mjs` provides reusable input-import injection
+and RAF stepping. Ashen's exporter no longer maintains ABI offsets, and its
+route verifier no longer maintains a private injection/RAF implementation.
+The existing DOM producer and v1/v2 decoder semantics remain compatible; neither
+UPR formats nor ordinary game APIs changed. Viewport, focus and visibility are
+explicit exporter metadata. Game seed/initial saves, milestones, expected
+progression, CPU references, strict renderer probes and tolerance 1 stay in the
+game verification code. The driver is only injected by a test server.
+
+Context: Intel macOS, Zig 0.15.2, native tests/optional exporter Debug and browser
+ReleaseSmall, baseline c8f4cf7f plus this focused change. Reproduction and exact
+evidence are recorded in the November 12 PROGRESS entry; GUIDE documents the
+shared workflow. The root engine check passes 85/85 steps and 328/328 tests.
+Independent JS DOM-produced bytes are compared with the Zig encoder through
+Wasm, including four controllers, pointer edges, physical keys and Unicode
+composition. Driver tests cover short buffers, malformed transport, exhaustion,
+edge nonduplication, cancellation, restart and wrapper restoration. Core public
+API compatibility is checked with the intentional preview-only addition.
+
+The fresh archive consumer builds the optional exporter using the public
+package, then normal package/web/native workflows without enabling replay.
+Chromium, Firefox and real Safari complete the same 6,577-tick route, ending
+reload, five route references plus the continued reference, explicit shutdown
+and save restoration. The detailed result files retain versions, hashes and
+per-browser assertions. The owned Safari service is stopped after verification.
+
+Classification remains developer ergonomics, with no demonstrated engine
+correctness defect. Remaining cost: expanded wire data is still about 12 MB for
+this route; this deliberately small facility does not stream UPR directly or
+generalize automation. Synthetic replay does not prove trusted/physical input,
+human pacing or performance. Frame-tail attribution remains a separate open
+investigation; this change adds no profiling or gameplay features.
+
+## Profiled ordinary rendering and resource lifecycle (working facilities)
+
+Task: identify real RPG CPU/resource costs before selecting optional rendering.
+Context/reproduction/evidence: PROFILE.md and root
+`zig-out/diagnostics/ashen-profile`, game baseline 471a17dd, Intel macOS 15.7.7,
+Zig 0.15.2/ReleaseFast. Public Canvas, HeadlessGameRunner, Audio.mix and ordinary
+SDL host were sufficient. Existing `examples/render_capacity_game.zig`,
+`src/render_benchmark.zig` and the native UP_NATIVE_TIMING_SAMPLES reporter
+provided the observation pattern. Optional game-owned wrappers retain clocks and
+allocation counters outside production game state and outside timed file I/O.
+
+Expected/observed: complete-route CPU and bounded native sample capture, resource
+release and visible busy shock work can be measured without changing gameplay.
+All three CPU runs return tracked live bytes to zero. Drawing/mixing have no
+allocation events; 31 update requests (2,530 bytes) include service work, so the
+initial no-recurring-allocation design is qualified rather than asserted for the
+whole host. Native samples retain presented-frame checks and reveal swapchain
+waiting separately from game draw. Classification: facilities working; no engine
+defect or API change proposed. Practical impact: no demonstrated rendering
+bottleneck at this workload/resolution. No workaround beyond optional developer
+instrumentation; no shipping runtime cost. Larger capacity/other hardware and
+browser performance remain outside these observations.
+
+## Healing commitment lacked a distinct pose (resolved game presentation gap)
+
+Task: make the vulnerable 60-tick healing action readable alongside its flask cost.
+Context: game rendering at 54de0808, Intel macOS, Zig 0.15.2/Debug, normal
+GameProtocol input. Expected: visible flask preparation followed by the heal cue
+at age 36. Observed in Game.draw: healing shared the idle player pose; only the
+HUD flask decrement communicated acceptance. Classification: low-severity game
+presentation gap, no missing Canvas/animation facility. Sources: src/game.zig's
+player drawing, combat.Fighter's existing healing timings.
+
+Reproduce the ordinary-input pose sequence with
+`ASHEN_POSE_EVIDENCE=zig-out/evidence/poses zig build test -j2` in the game directory.
+PNG evidence: idle, healing-hold/release, sabre-startup/active. The focused test
+compares only the player region rather than accepting a changed HUD as pose
+feedback. Resolution: raised vial/crouch during healing, a small cross beginning
+at the actual healing tick, and a drawn-back weapon pose during attack startup.
+Recovery returns to idle. No timing, damage, stamina or input changes; all 32 tests
+pass. Canvas primitives suffice; no engine workaround/proposal or new subsystem.
+
+## Pause hid upgrade rejection feedback (resolved game UI bug)
+
+Task: buy upgrades/change a charm through pause and understand unavailable choices.
+Context: 022976b0, Intel macOS/Zig 0.15.2/Debug. Expected: a reason when away from
+a lantern, when missing the reward, or short of currency. Observed: early purchase/
+charm guards returned false without updating the message, and pause overwrote the
+world-message footer, hiding even successful/insufficient-currency feedback.
+Classification: medium game UI bug; public text/Canvas facilities worked correctly.
+
+Sources: World.purchase/toggleCharm and Game.draw's pause footer. Reproduction:
+Begin, move right beyond the lantern, Escape, Down twice, Enter. Resolution:
+actionable guard messages and a visible second pause-footer row. Existing rule
+tests assert rejection reasons; a normal-input GameProtocol regression executes
+that menu route and requires nonempty visible footer pixels. Run
+`ASHEN_POSE_EVIDENCE=zig-out/evidence/poses zig build test web -j2 --summary all`;
+`upgrade-away.png` was reviewed. No engine workaround/runtime facility needed.
+Status: resolved with regression coverage; relevant browser/native rereview follows
+as part of the final presentation checks. Prepared copy now excludes test names
+from its game-owned extraction helper; no decoding/layout enters drawing.
+
+## Successful replacement left stale title copy (resolved game UI bug)
+
+Task: explicitly replace a corrupt slot and return to a truthful Continue screen.
+Context: 80ff9134, Intel macOS/Zig 0.15.2, Debug tests and ReleaseSmall browser.
+Expected: successful persistence clears the old load problem and updates title
+status. Observed in Game.persist: save_failed cleared, while load_problem/load_note
+retained the prior corruption or missing-save text. Category: low-severity game
+state/copy bug. SaveStore already wrote the correct bytes; no engine fix needed.
+
+Resolution: update the load flags/copy only after a successful write; rejected
+writes retain the previous explanation and good data. Initial settings-only saves
+say settings saved, while a started journey offers Continue. The existing corrupt-
+slot regression now asserts the cleared flag and accurate note after New Game.
+Reproduce with `zig build test web -j2`, serve the bundle on 8114 and run from root:
+`PEAS_SMOKE_BROWSERS=chromium,firefox node dogfood/ashen-causeway/tools/browser-smoke.mjs`.
+Both actual browsers pass corrupt title → explicit New Game → title → reload →
+Continue alongside the existing rejected-write/retry/audio checks. Reviewed
+chromium-corrupt-title/replaced-title PNGs. Logs: root
+`zig-out/diagnostics/ashen-persistence-polish.log`; PNGs/JSON in game
+`zig-out/evidence`. Status resolved; no workaround or framework proposal.
+
+## Rejected commands gave misleading or silent feedback (resolved game bug)
+
+Task: understand an unavailable interaction or a weapon change during commitment.
+Context: 248b0b49, Intel macOS/Zig 0.15.2, Debug/ReleaseSmall. Expected: success cues
+only after an interaction succeeds, and an explanation when a committed action
+prevents a command. Observed: Game.update played the bell for any E press, even
+without a nearby object; Fighter.equip's false result was ignored. Classification:
+low-severity game feedback/state-plumbing bug, no input/audio engine defect.
+
+World.interact now reports success, with a transient game-owned acceptance flag;
+empty/committed interactions and committed swaps set the existing rejected-action
+notice and give an actionable message. Only accepted interactions play the bell.
+The flag clears every world tick, including dead-player early returns, and is
+excluded from saves. No damage/window/movement/cancellation policy changed.
+Sources: World.tick/interact, Game.update, existing Fighter.equip and Sound.play.
+Reproduce/check: game `zig build test web -j2 --summary all`; the new test exercises
+empty/committed commands, unchanged weapon, lantern success and stale-flag clearing.
+Status resolved with 34 passing tests; no workaround or framework feature proposed.
+
+## Native save/update tail: historical attribution gap
+
+Task: profile actual ordinary and shock combat without hiding rare stalls.
+Context: 50511dde production code plus final profiling helpers, Intel i5/Iris Plus,
+macOS 15.7.7, Zig 0.15.2/ReleaseFast, 480×270 Canvas/1920×1080 output. Reproduce:
+PROFILE.md's final build and one-round profiling commands. Evidence: root
+`zig-out/diagnostics/ashen-profile-polish/result.json`, compressed CPU samples and
+`native-ordinary-0.log`. Observed: input tick 555 has a 40.598 ms update/41.210 ms
+frame, coinciding with a 40-byte update allocation in the headless route; p95 frame
+time is 16.836 ms. There is no promise that sync writes meet a fixed frame budget.
+
+APIs/sources: Game.persist, SaveStore.write, src/native_save_data.zig:75 (temporary
+file write/sync/rename) and the existing SDL timing reporter. Classification:
+documented synchronous-service boundary plus an attribution gap; no reproduced
+engine correctness defect. Medium impact if this tail occurs during combat.
+No game policy or storage durability was weakened based on an unproven cause.
+The retained data does not separate sync latency from OS scheduling or other
+update work. Proposed next diagnostic: optional per-save duration observations;
+if storage is confirmed dominant, evaluate game-owned coalescing at safe points
+with explicit pending-save feedback. An asynchronous storage subsystem is not
+justified by this one sample. Status: observed limitation/investigation open.
+
+A profiling-observer issue was also corrected: the optional native wrapper's
+periodic progress line occurred once in its ordinary measurement window. Profile
+mode now suppresses it, and the runner rejects such logs and failed persistence.
+Final one-round results pass those checks. Earlier numbers retain their known
+observer-I/O limitation; ordinary game save work remains intentionally timed.
+
+### Bounded follow-up — 2026-11-12
+
+Status: investigation completed with the historical cause unproven; no fix
+justified. The original observation above remains historical evidence, unchanged
+on disk. Starting at d6441b09 with the completed replay adapter, optional native
+verification now wraps actual SaveStore calls and records bounded, preallocated
+tick/start/end/outcome data. The host's update counts associate zero/multiple
+fixed updates with each frame. No observers enter production game state, saves,
+input or shipping bundles. PROFILE's November 12 section records exact commands,
+source/binary hashes, machine context, distributions, overhead and limits.
+
+Three baseline plus three instrumented ordinary windows and the same boss/shock
+matrix pass, each with 120 warm-up/240 retained presented frames. Actual
+synchronous saves remain in both modes. At tick 555, observed writes take
+0.581–1.291 ms, with total updates 0.594–1.313 ms; the historical 40.598 ms update
+does not recur. A warm-up write takes 14.726 ms inside a 14.743 ms update, so
+short medians do not promise bounded save latency. The largest retained frame,
+36.431 ms, spends 35.615 ms in upload/present and only 0.594 ms in update.
+Larger startup/warm-up frame tails also remain in the raw evidence.
+
+The current data locates elapsed time within observed write boundaries, not a
+specific syscall/device; OS descheduling during a call remains possible. Across
+2,880 retained frames, no update exceeds 5 ms and no frame exceeds historical
+41.210248 ms. This small local sample does not estimate a general recurrence
+rate or establish a frame-time guarantee. Classification remains an attribution
+limit at a synchronous service boundary, with potential player impact if stalls
+recur, rather than a demonstrated engine correctness defect.
+
+Evidence: root `zig-out/diagnostics/ashen-save-attribution-20261112/result.json`,
+per-case native logs, correlated frame/operation JSON and compressed CPU samples.
+All twelve native endpoints match CPU gameplay state and saved bytes; resources
+clean up and the isolated UUID namespace is absent. Controlled no-op-store
+measurements show approximately 0.149 µs extra median observer cost per update/
+write pair; native run variation is larger, so overhead is not assumed free.
+No extra targeted experiment was used. No sync calls, saves, error propagation,
+replacement semantics, format or durability policy changed.
+
+Next measurement, if recurrence warrants it: the same bounded tick/frame capture
+with scheduler/file-I/O tracing and optional create/write/sync/close/rename
+sub-operation markers. A policy/coalescing/async change would require a separate
+durability and user-feedback decision. This follow-up neither reopens replay
+tooling ergonomics nor adds an architectural persistence change.

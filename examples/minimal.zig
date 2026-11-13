@@ -1,0 +1,21 @@
+const up = @import("unpolished-peas");
+const sdl = @import("unpolished-peas-sdl3");
+
+const Game = struct {
+    pub const config: sdl.Config = .{
+        .title = "unpolished-peas minimal",
+        .width = 80,
+        .height = 60,
+        .scale = 6,
+        .clear_color = up.core.Color.rgb(14, 18, 24),
+    };
+
+    pub fn draw(_: *Game, ctx: *sdl.Context) void {
+        ctx.rect(18, 18, 28, 28, up.core.Color.rgb(255, 198, 74));
+        ctx.text("HELLO", 8, 8, up.core.Color.white);
+    }
+};
+
+pub fn main() !void {
+    try sdl.playGame(Game);
+}

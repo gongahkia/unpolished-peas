@@ -1,71 +1,77 @@
-[![](https://img.shields.io/badge/shack_1.0.0-passing-green)](https://github.com/gongahkia/shack/releases/tag/1.0.0)
-[![](https://github.com/gongahkia/shack/actions/workflows/ci.yml/badge.svg)](https://github.com/gongahkia/shack/actions/workflows/ci.yml)
+[![](https://img.shields.io/badge/unpolished_peas_v1.0.0-active-brightgreen)](https://github.com/gongahkia/unpolished-peas/releases/tag/1.0.0)
+![](https://github.com/gongahkia/unpolished-peas/actions/workflows/toolchain.yml/badge.svg)
 
-# `Shack` - a SHiok Atomweight Cli worKstation
+# `Unpolished Peas` 🫛
 
-Shack is an [atomweight](https://en.wikipedia.org/wiki/Atomweight) terminal IDE with [sensible day 1 defaults](https://martinfowler.com/bliki/SensibleDefault.html).
-
-<div align="center">
-    <img src="./assets/logo/shack.png" width="35%">
-</div>
+A small framework for building 2D games in [Zig](https://ziglang.org/) that compile to [native](https://ziglang.org/learn/build-system/) and [browser](https://github.com/zigtools/playground) builds.
 
 ## Stack
 
-* *Scripting*: [Go 1.27+](https://go.dev/dl/)
-* *CLI*: [tcell](https://github.com/gdamore/tcell)
-* *Highlighting*: [Chroma](https://github.com/alecthomas/chroma)
+* [Zig 0.15.2](https://ziglang.org/)
+* [SDL3](https://wiki.libsdl.org/SDL3/FrontPage)
+* [WASM](https://webassembly.org/)
 
-## Features
-
-* Familiar keyboard shortcuts and mouse selection
-* Multiple buffers, split panes, a project file tree and an optional minimap
-* Literal and regex search, multiple selections and reviewed multi-file replacements
-* Bundled syntax highlighting, with optional language servers for completion, diagnostics, navigation and formatting
-* Markdown and Org reading views, live previews and code folding
-* Integrated terminals, build/test tasks, Git tools and optional source-level debugging
-* Unsaved-buffer recovery, project sessions and [JSON configuration](./docs/USAGE.md#configuration)
-
-## Video of `Shack` editing its own source code
+## Screenshots
 
 <div align="center">
-  <video width="85%" src="https://github.com/user-attachments/assets/476227ec-3b7f-450d-bb92-a81e1fc7e3da" controls muted playsinline preload="metadata"></video>
+    <img src="asset/reference/neon-siege.png" width="45%">
+    <img src="asset/reference/lantern-leap.png" width="45%">
 </div>
 
 ## Usage
 
-> [!IMPORTANT]
-> Building from source requires Go 1.27 or newer and `make`. 
+> [!NOTE]  
+> For a more detailed guide, refer to the [quickstart guide](docs/guides/quickstart.md) or check out `Unpolished Peas` in action within [Seed Sprint](templates/starter/README.md) & [Neon Siege](dogfood/neon-siege/README.md).
 
-### Building `Shack` yourself
+It's pretty easy to get started with `Unpolished Peas`. Below are a couple of code snippets.
 
-1. Clone the repository.
+### Drawing text
 
-```console
-$ git clone https://github.com/gongahkia/shack && cd shack
+```zig
+pub fn draw(_: *Game, ctx: *sdl.Context) void {
+    ctx.text("Hello world!", 40, 30, up.core.Color.white);
+}
 ```
 
-2. Build and open the project in your terminal.
+### Drawing an image
 
-```console
-$ GOTOOLCHAIN=auto make build
-$ ./build/shack .
+```zig
+image: up.assets.ImageHandle,
+
+pub fn init(ctx: *sdl.Context) !Game {
+    return .{ .image = try ctx.loadImage("ball.png") };
+}
+
+pub fn draw(self: *Game, ctx: *sdl.Context) !void {
+    try ctx.image(self.image, 40, 30);
+}
 ```
 
-3. Then run the below to open a specific file
+### Playing a sound
 
-```console
-$ ./build/shack docs/USAGE.md
+```zig
+sound: up.assets.AudioHandle,
+
+pub fn init(ctx: *sdl.Context) !Game {
+    return .{ .sound = try ctx.loadSound("blip.wav") };
+}
+
+pub fn update(self: *Game, ctx: *sdl.Context) !void {
+    if (ctx.input.wasPressed(.action)) {
+        _ = try ctx.audio.playSound(try ctx.assets.trySoundPtr(self.sound), .{});
+    }
+}
 ```
 
+## Support
 
-4. Optionally edit a file without a language server using the below.
+See [platform status](docs/guides/platforms.md) for the updated suport matrix.
 
-```console
-$ ./build/shack --no-lsp .
-```
+## Other docs
 
-5. See the [usage guide](./docs/USAGE.md) for the full list of controls, configuration, and [language-server workflows](./docs/LANGUAGE_SERVERS.md).
-
-## Reference
-
-Also see [`Shed`](https://github.com/gongahkia/shed).
+* [Learning path](docs/index.md) 
+* [Game protocol](docs/guides/game-protocol.md)
+* [Core contract](docs/guides/core-contract.md) 
+* [Installation](docs/guides/installation.md)
+* [Release policy](docs/guides/releases.md) 
+* [Local documentation](docs/index.md) 

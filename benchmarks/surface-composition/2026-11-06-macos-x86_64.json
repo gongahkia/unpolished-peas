@@ -1,0 +1,1755 @@
+{
+  "schema": "surface-composition-comparison-v1",
+  "platform": "macOS-15.7.7-x86_64-i386-64bit-Mach-O",
+  "rounds": 7,
+  "order": "before/after on even pairs; after/before on odd pairs; serial execution",
+  "binaries": {
+    "before": {
+      "path": "zig-out/performance/surface-2026-11-06/before-surface-composition",
+      "sha256": "a72f2c885953cb324e49d6653e3f1ad2e9636f5ada60d7fce664854ecb7979ad"
+    },
+    "after": {
+      "path": "zig-out/performance/surface-2026-11-06/after-surface-composition",
+      "sha256": "03edc85564aed246b78c716be94335d4662d0b05e7f7f488c638042fd316e43e"
+    }
+  },
+  "baseline_sha256": "0269183eab12585c45d311ae69b3475e2b06d82a4aecc279c0520d16eff2250f",
+  "measurements": [
+    {
+      "name": "surface_1to1_nearest",
+      "workload": {
+        "schema": "surface-composition-v1",
+        "target": "macos-x86_64",
+        "mode": "ReleaseFast",
+        "name": "surface_1to1_nearest",
+        "source_width": 320,
+        "source_height": 180,
+        "width": 320,
+        "height": 180,
+        "visible_pixels": 57600,
+        "pattern": "solid",
+        "filter": "nearest",
+        "tint": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "blend": "alpha",
+        "x": 0,
+        "y": 0,
+        "clip": null,
+        "warmup_iterations": 4,
+        "target_pixels": 50331648,
+        "iterations": 874,
+        "allocations": 0,
+        "allocated_bytes": 0,
+        "pixel_hash": "9889a9110feb1325"
+      },
+      "before": {
+        "median_ns": 83775,
+        "min_ns": 79535,
+        "max_ns": 90317,
+        "mad_ns": 1635,
+        "samples_ns": [
+          90317,
+          84816,
+          85003,
+          81605,
+          79535,
+          83775,
+          82140
+        ]
+      },
+      "after": {
+        "median_ns": 81921,
+        "min_ns": 79999,
+        "max_ns": 88272,
+        "mad_ns": 1348,
+        "samples_ns": [
+          83493,
+          88272,
+          82515,
+          80915,
+          81921,
+          79999,
+          80573
+        ]
+      },
+      "median_paired_speedup": 1.0194482022513744,
+      "paired_improvements": 5
+    },
+    {
+      "name": "surface_160x90_to_1280x720_nearest",
+      "workload": {
+        "schema": "surface-composition-v1",
+        "target": "macos-x86_64",
+        "mode": "ReleaseFast",
+        "name": "surface_160x90_to_1280x720_nearest",
+        "source_width": 160,
+        "source_height": 90,
+        "width": 1280,
+        "height": 720,
+        "visible_pixels": 921600,
+        "pattern": "solid",
+        "filter": "nearest",
+        "tint": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "blend": "alpha",
+        "x": 0,
+        "y": 0,
+        "clip": null,
+        "warmup_iterations": 4,
+        "target_pixels": 50331648,
+        "iterations": 55,
+        "allocations": 0,
+        "allocated_bytes": 0,
+        "pixel_hash": "f95451d948b12325"
+      },
+      "before": {
+        "median_ns": 1612713,
+        "min_ns": 1546098,
+        "max_ns": 1901430,
+        "mad_ns": 53274,
+        "samples_ns": [
+          1901430,
+          1817646,
+          1646852,
+          1546098,
+          1559439,
+          1606669,
+          1612713
+        ]
+      },
+      "after": {
+        "median_ns": 1603566,
+        "min_ns": 1526319,
+        "max_ns": 1873487,
+        "mad_ns": 20239,
+        "samples_ns": [
+          1623805,
+          1873487,
+          1622141,
+          1526319,
+          1603566,
+          1588512,
+          1540196
+        ]
+      },
+      "median_paired_speedup": 1.0129586279146103,
+      "paired_improvements": 5
+    },
+    {
+      "name": "surface_320x180_to_1280x720_nearest",
+      "workload": {
+        "schema": "surface-composition-v1",
+        "target": "macos-x86_64",
+        "mode": "ReleaseFast",
+        "name": "surface_320x180_to_1280x720_nearest",
+        "source_width": 320,
+        "source_height": 180,
+        "width": 1280,
+        "height": 720,
+        "visible_pixels": 921600,
+        "pattern": "solid",
+        "filter": "nearest",
+        "tint": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "blend": "alpha",
+        "x": 0,
+        "y": 0,
+        "clip": null,
+        "warmup_iterations": 4,
+        "target_pixels": 50331648,
+        "iterations": 55,
+        "allocations": 0,
+        "allocated_bytes": 0,
+        "pixel_hash": "f95451d948b12325"
+      },
+      "before": {
+        "median_ns": 2255082,
+        "min_ns": 2035145,
+        "max_ns": 2322101,
+        "mad_ns": 38537,
+        "samples_ns": [
+          2287890,
+          2272177,
+          2255082,
+          2035145,
+          2322101,
+          2072397,
+          2216545
+        ]
+      },
+      "after": {
+        "median_ns": 2080082,
+        "min_ns": 2051615,
+        "max_ns": 2387226,
+        "mad_ns": 19149,
+        "samples_ns": [
+          2387226,
+          2285805,
+          2071367,
+          2051615,
+          2080082,
+          2076474,
+          2099231
+        ]
+      },
+      "median_paired_speedup": 0.9980365754639836,
+      "paired_improvements": 3
+    },
+    {
+      "name": "surface_160x90_to_1280x720_linear",
+      "workload": {
+        "schema": "surface-composition-v1",
+        "target": "macos-x86_64",
+        "mode": "ReleaseFast",
+        "name": "surface_160x90_to_1280x720_linear",
+        "source_width": 160,
+        "source_height": 90,
+        "width": 1280,
+        "height": 720,
+        "visible_pixels": 921600,
+        "pattern": "solid",
+        "filter": "linear",
+        "tint": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "blend": "alpha",
+        "x": 0,
+        "y": 0,
+        "clip": null,
+        "warmup_iterations": 4,
+        "target_pixels": 50331648,
+        "iterations": 55,
+        "allocations": 0,
+        "allocated_bytes": 0,
+        "pixel_hash": "f95451d948b12325"
+      },
+      "before": {
+        "median_ns": 23840318,
+        "min_ns": 23402302,
+        "max_ns": 28007999,
+        "mad_ns": 438016,
+        "samples_ns": [
+          24549557,
+          28007999,
+          23840318,
+          23507847,
+          23402302,
+          23770293,
+          24715101
+        ]
+      },
+      "after": {
+        "median_ns": 7393253,
+        "min_ns": 7161931,
+        "max_ns": 8097098,
+        "mad_ns": 144920,
+        "samples_ns": [
+          7458731,
+          8097098,
+          7169849,
+          7161931,
+          7538173,
+          7372884,
+          7393253
+        ]
+      },
+      "median_paired_speedup": 3.2913852235722136,
+      "paired_improvements": 7
+    },
+    {
+      "name": "surface_320x180_to_1280x720_linear",
+      "workload": {
+        "schema": "surface-composition-v1",
+        "target": "macos-x86_64",
+        "mode": "ReleaseFast",
+        "name": "surface_320x180_to_1280x720_linear",
+        "source_width": 320,
+        "source_height": 180,
+        "width": 1280,
+        "height": 720,
+        "visible_pixels": 921600,
+        "pattern": "solid",
+        "filter": "linear",
+        "tint": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "blend": "alpha",
+        "x": 0,
+        "y": 0,
+        "clip": null,
+        "warmup_iterations": 4,
+        "target_pixels": 50331648,
+        "iterations": 55,
+        "allocations": 0,
+        "allocated_bytes": 0,
+        "pixel_hash": "f95451d948b12325"
+      },
+      "before": {
+        "median_ns": 24304968,
+        "min_ns": 23429438,
+        "max_ns": 31847030,
+        "mad_ns": 793995,
+        "samples_ns": [
+          24304968,
+          23429438,
+          23510973,
+          23543882,
+          25821070,
+          31847030,
+          24591803
+        ]
+      },
+      "after": {
+        "median_ns": 8224043,
+        "min_ns": 7631883,
+        "max_ns": 8805110,
+        "mad_ns": 112795,
+        "samples_ns": [
+          8224043,
+          8193474,
+          7631883,
+          8111248,
+          8433955,
+          8805110,
+          8327907
+        ]
+      },
+      "median_paired_speedup": 2.95535517020035,
+      "paired_improvements": 7
+    },
+    {
+      "name": "pattern_linear_320x180_to_1280x720",
+      "workload": {
+        "schema": "surface-composition-v1",
+        "target": "macos-x86_64",
+        "mode": "ReleaseFast",
+        "name": "pattern_linear_320x180_to_1280x720",
+        "source_width": 320,
+        "source_height": 180,
+        "width": 1280,
+        "height": 720,
+        "visible_pixels": 921600,
+        "pattern": "opaque_pattern",
+        "filter": "linear",
+        "tint": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "blend": "alpha",
+        "x": 0,
+        "y": 0,
+        "clip": null,
+        "warmup_iterations": 4,
+        "target_pixels": 50331648,
+        "iterations": 55,
+        "allocations": 0,
+        "allocated_bytes": 0,
+        "pixel_hash": "982c29ba3be57899"
+      },
+      "before": {
+        "median_ns": 23914252,
+        "min_ns": 23172284,
+        "max_ns": 29026908,
+        "mad_ns": 741968,
+        "samples_ns": [
+          23914252,
+          23172284,
+          23542968,
+          23849938,
+          25424454,
+          29026908,
+          26820632
+        ]
+      },
+      "after": {
+        "median_ns": 8461249,
+        "min_ns": 7820252,
+        "max_ns": 9826171,
+        "mad_ns": 640997,
+        "samples_ns": [
+          8461249,
+          8058899,
+          7959256,
+          7820252,
+          9826171,
+          9352066,
+          9419963
+        ]
+      },
+      "median_paired_speedup": 2.875365977412051,
+      "paired_improvements": 7
+    },
+    {
+      "name": "alpha_linear_320x180_to_1280x720",
+      "workload": {
+        "schema": "surface-composition-v1",
+        "target": "macos-x86_64",
+        "mode": "ReleaseFast",
+        "name": "alpha_linear_320x180_to_1280x720",
+        "source_width": 320,
+        "source_height": 180,
+        "width": 1280,
+        "height": 720,
+        "visible_pixels": 921600,
+        "pattern": "alpha_pattern",
+        "filter": "linear",
+        "tint": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "blend": "alpha",
+        "x": 0,
+        "y": 0,
+        "clip": null,
+        "warmup_iterations": 4,
+        "target_pixels": 50331648,
+        "iterations": 55,
+        "allocations": 0,
+        "allocated_bytes": 0,
+        "pixel_hash": "c6651686052f44e0"
+      },
+      "before": {
+        "median_ns": 31368470,
+        "min_ns": 30316913,
+        "max_ns": 33458087,
+        "mad_ns": 777643,
+        "samples_ns": [
+          30316913,
+          31368470,
+          32580430,
+          31287817,
+          33458087,
+          31184900,
+          32146113
+        ]
+      },
+      "after": {
+        "median_ns": 13305351,
+        "min_ns": 12832795,
+        "max_ns": 18420664,
+        "mad_ns": 316825,
+        "samples_ns": [
+          13071029,
+          12832795,
+          13901046,
+          13305351,
+          13036535,
+          13622176,
+          18420664
+        ]
+      },
+      "median_paired_speedup": 2.343739456728652,
+      "paired_improvements": 7
+    },
+    {
+      "name": "tinted_additive_linear_clipped",
+      "workload": {
+        "schema": "surface-composition-v1",
+        "target": "macos-x86_64",
+        "mode": "ReleaseFast",
+        "name": "tinted_additive_linear_clipped",
+        "source_width": 317,
+        "source_height": 179,
+        "width": 1279,
+        "height": 719,
+        "visible_pixels": 820283,
+        "pattern": "alpha_pattern",
+        "filter": "linear",
+        "tint": {
+          "r": 201,
+          "g": 109,
+          "b": 237,
+          "a": 177
+        },
+        "blend": "additive",
+        "x": -13,
+        "y": 7,
+        "clip": {
+          "x": 11,
+          "y": 17,
+          "w": 1201,
+          "h": 683
+        },
+        "warmup_iterations": 4,
+        "target_pixels": 50331648,
+        "iterations": 62,
+        "allocations": 0,
+        "allocated_bytes": 0,
+        "pixel_hash": "e24903796d83bf93"
+      },
+      "before": {
+        "median_ns": 29523889,
+        "min_ns": 28319063,
+        "max_ns": 30144059,
+        "mad_ns": 579704,
+        "samples_ns": [
+          29523889,
+          29562937,
+          30144059,
+          28319063,
+          28460253,
+          28976599,
+          30103593
+        ]
+      },
+      "after": {
+        "median_ns": 15594659,
+        "min_ns": 15138481,
+        "max_ns": 17153942,
+        "mad_ns": 248757,
+        "samples_ns": [
+          17153942,
+          15371791,
+          15665026,
+          15594659,
+          15138481,
+          15345902,
+          16023898
+        ]
+      },
+      "median_paired_speedup": 1.879993970332955,
+      "paired_improvements": 7
+    },
+    {
+      "name": "downscale_linear_640x360_to_317x179",
+      "workload": {
+        "schema": "surface-composition-v1",
+        "target": "macos-x86_64",
+        "mode": "ReleaseFast",
+        "name": "downscale_linear_640x360_to_317x179",
+        "source_width": 640,
+        "source_height": 360,
+        "width": 317,
+        "height": 179,
+        "visible_pixels": 56743,
+        "pattern": "opaque_pattern",
+        "filter": "linear",
+        "tint": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "blend": "alpha",
+        "x": 0,
+        "y": 0,
+        "clip": null,
+        "warmup_iterations": 4,
+        "target_pixels": 50331648,
+        "iterations": 888,
+        "allocations": 0,
+        "allocated_bytes": 0,
+        "pixel_hash": "b060ad04288f8012"
+      },
+      "before": {
+        "median_ns": 1486779,
+        "min_ns": 1457091,
+        "max_ns": 1645088,
+        "mad_ns": 29688,
+        "samples_ns": [
+          1645088,
+          1471698,
+          1457091,
+          1486779,
+          1477586,
+          1536732,
+          1610899
+        ]
+      },
+      "after": {
+        "median_ns": 1030777,
+        "min_ns": 965860,
+        "max_ns": 1093627,
+        "mad_ns": 62011,
+        "samples_ns": [
+          1093627,
+          1085580,
+          967957,
+          965860,
+          996704,
+          1030777,
+          1092788
+        ]
+      },
+      "median_paired_speedup": 1.4908481659951667,
+      "paired_improvements": 7
+    },
+    {
+      "name": "odd_alpha_linear_37x23_to_1001x563",
+      "workload": {
+        "schema": "surface-composition-v1",
+        "target": "macos-x86_64",
+        "mode": "ReleaseFast",
+        "name": "odd_alpha_linear_37x23_to_1001x563",
+        "source_width": 37,
+        "source_height": 23,
+        "width": 1001,
+        "height": 563,
+        "visible_pixels": 563563,
+        "pattern": "alpha_pattern",
+        "filter": "linear",
+        "tint": {
+          "r": 99,
+          "g": 187,
+          "b": 239,
+          "a": 213
+        },
+        "blend": "alpha",
+        "x": 0,
+        "y": 0,
+        "clip": null,
+        "warmup_iterations": 4,
+        "target_pixels": 50331648,
+        "iterations": 90,
+        "allocations": 0,
+        "allocated_bytes": 0,
+        "pixel_hash": "394b30ca491f8112"
+      },
+      "before": {
+        "median_ns": 21142059,
+        "min_ns": 20806139,
+        "max_ns": 21677910,
+        "mad_ns": 298454,
+        "samples_ns": [
+          20981099,
+          20806139,
+          20838079,
+          21677910,
+          21440513,
+          21187381,
+          21142059
+        ]
+      },
+      "after": {
+        "median_ns": 10156042,
+        "min_ns": 9904771,
+        "max_ns": 10633140,
+        "mad_ns": 199792,
+        "samples_ns": [
+          9904771,
+          9956250,
+          10191756,
+          10119227,
+          10567142,
+          10633140,
+          10156042
+        ]
+      },
+      "median_paired_speedup": 2.081722289057095,
+      "paired_improvements": 7
+    },
+    {
+      "name": "thin_alpha_linear_1x180_to_1280x720",
+      "workload": {
+        "schema": "surface-composition-v1",
+        "target": "macos-x86_64",
+        "mode": "ReleaseFast",
+        "name": "thin_alpha_linear_1x180_to_1280x720",
+        "source_width": 1,
+        "source_height": 180,
+        "width": 1280,
+        "height": 720,
+        "visible_pixels": 921600,
+        "pattern": "alpha_pattern",
+        "filter": "linear",
+        "tint": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "blend": "alpha",
+        "x": 0,
+        "y": 0,
+        "clip": null,
+        "warmup_iterations": 4,
+        "target_pixels": 50331648,
+        "iterations": 55,
+        "allocations": 0,
+        "allocated_bytes": 0,
+        "pixel_hash": "793ca58e2318c125"
+      },
+      "before": {
+        "median_ns": 31226717,
+        "min_ns": 30448607,
+        "max_ns": 32856187,
+        "mad_ns": 636760,
+        "samples_ns": [
+          30596044,
+          31648891,
+          32856187,
+          32540552,
+          31226717,
+          30448607,
+          30589957
+        ]
+      },
+      "after": {
+        "median_ns": 12255472,
+        "min_ns": 11904574,
+        "max_ns": 13146183,
+        "mad_ns": 350898,
+        "samples_ns": [
+          12734096,
+          12151747,
+          13146183,
+          12637293,
+          11904574,
+          12248194,
+          12255472
+        ]
+      },
+      "median_paired_speedup": 2.4992948143198674,
+      "paired_improvements": 7
+    },
+    {
+      "name": "pattern_linear_1to1",
+      "workload": {
+        "schema": "surface-composition-v1",
+        "target": "macos-x86_64",
+        "mode": "ReleaseFast",
+        "name": "pattern_linear_1to1",
+        "source_width": 320,
+        "source_height": 180,
+        "width": 320,
+        "height": 180,
+        "visible_pixels": 57600,
+        "pattern": "opaque_pattern",
+        "filter": "linear",
+        "tint": {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        "blend": "alpha",
+        "x": 0,
+        "y": 0,
+        "clip": null,
+        "warmup_iterations": 4,
+        "target_pixels": 50331648,
+        "iterations": 874,
+        "allocations": 0,
+        "allocated_bytes": 0,
+        "pixel_hash": "970296e737cbada5"
+      },
+      "before": {
+        "median_ns": 1526850,
+        "min_ns": 1464775,
+        "max_ns": 1657968,
+        "mad_ns": 56766,
+        "samples_ns": [
+          1657968,
+          1526850,
+          1610349,
+          1495660,
+          1464775,
+          1470084,
+          1562117
+        ]
+      },
+      "after": {
+        "median_ns": 327041,
+        "min_ns": 297738,
+        "max_ns": 337017,
+        "mad_ns": 5827,
+        "samples_ns": [
+          332868,
+          327041,
+          321322,
+          330170,
+          297738,
+          298181,
+          337017
+        ]
+      },
+      "median_paired_speedup": 4.919677703215579,
+      "paired_improvements": 7
+    }
+  ],
+  "environment": {
+    "revision": "48dced2ca325392ae490e636068be316780cc789",
+    "os": "macOS-15.7.7-x86_64-i386-64bit-Mach-O",
+    "cpu": "Intel(R) Core(TM) i5-8279U CPU @ 2.40GHz",
+    "physical_cores": 4,
+    "logical_cores": 8,
+    "ram_bytes": 8589934592,
+    "zig": "0.15.2",
+    "optimization": "ReleaseFast",
+    "command": "zig build -Doptimize=ReleaseFast -Dwith_sdl=false benchmark-rendering --verbose",
+    "warmup": 4,
+    "target_pixels": 50331648,
+    "source_sha256": "102dbb516d4b56ddf54c2202f1707fa18da3f36e014d86a015551b8a3e367c54",
+    "binary_sha256": "54337b03868fbac40cf2cd0f6e3faa2ea6e26a5813bacbfbab9ea4603f5da4b9",
+    "power": "Now drawing from 'Battery Power'\n -InternalBattery-0 (id=6881379)\t100%; discharging; 1:33 remaining present: true"
+  },
+  "power_after_paired": "Now drawing from 'Battery Power'\n -InternalBattery-0 (id=6881379)\t61%; discharging; 0:32 remaining present: true",
+  "date": "2026-11-06",
+  "kind": "local measurement; not a reviewed performance budget",
+  "source_hashes_sha256": {
+    "zig-out/performance/surface-2026-11-06/original-canvas.zig": "102dbb516d4b56ddf54c2202f1707fa18da3f36e014d86a015551b8a3e367c54",
+    "src/canvas.zig": "b045ba3ff653df980893a50be824cd2b9f776941335fa6f6e61a82265cb7af1d",
+    "src/surface_composition_benchmark.zig": "f1ca2db2d979ab9ec08f339e874face995877c89cab690ab26d00072063e8342",
+    "src/surface_composition_workloads.zig": "9da0790474f5f5f4c7abce39052fbb735a61d089392de972b236df03561492bc"
+  },
+  "methodology": {
+    "warmup_draws": 4,
+    "target_visible_pixels": 50331648,
+    "iterations": "ceil(target / visible_pixels), bounded 8..8192; all current cases reach target",
+    "sampling": "7 alternating pairs per case, serial; no builds/tests/profiling during paired measurements",
+    "statistics": "median and MAD of all 7 per-draw wall-clock samples; median of 7 before/after ratios",
+    "timed": "drawSurface and compiler memory barrier only; no clearing between draws",
+    "excluded": "allocation/setup, procedural source population, initial clear, hash/output, upload, presentation, GPU, simulation",
+    "baseline_conformance_hash": "716431564172485137",
+    "explicit_scratch_bytes": 5120
+  },
+  "commands": {
+    "baseline_full": "zig build -Doptimize=ReleaseFast -Dwith_sdl=false benchmark-rendering --verbose",
+    "focused_before_and_after": "zig build -Doptimize=ReleaseFast -Dwith_sdl=false benchmark-surface-composition --verbose -- --rounds 7",
+    "paired": "python3 script/compare_surface_composition.py zig-out/performance/surface-2026-11-06/before-surface-composition zig-out/performance/surface-2026-11-06/after-surface-composition --baseline zig-out/performance/surface-2026-11-06/before.jsonl --rounds 7 --output zig-out/performance/surface-2026-11-06/paired.json",
+    "profile": "before-surface-composition --case surface_320x180_to_1280x720_linear --rounds 8; /usr/bin/sample <pid> 3 1 -file before-sample.txt"
+  },
+  "profile": {
+    "main_thread_samples": 2151,
+    "draw_surface_samples": 2144,
+    "duration_seconds": 3,
+    "interval_ms": 1,
+    "attribution": "linear drawSurface including inlined helpers; no distinct per-helper percentages"
+  },
+  "full_benchmark_cross_check": {
+    "samples_per_version": 1,
+    "workload_count": 96,
+    "parameters_unchanged": true,
+    "allocations": 0,
+    "rows": [
+      {
+        "name": "canvas_clear",
+        "size": "160x90",
+        "iterations": 3496,
+        "before_average_ns": 987,
+        "after_average_ns": 1005,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "canvas_to_rgba_staging_copy",
+        "size": "160x90",
+        "iterations": 3496,
+        "before_average_ns": 1566,
+        "after_average_ns": 1319,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "canvas_clear",
+        "size": "320x180",
+        "iterations": 874,
+        "before_average_ns": 5151,
+        "after_average_ns": 3340,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "canvas_to_rgba_staging_copy",
+        "size": "320x180",
+        "iterations": 874,
+        "before_average_ns": 9748,
+        "after_average_ns": 9864,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "canvas_clear",
+        "size": "640x360",
+        "iterations": 219,
+        "before_average_ns": 31293,
+        "after_average_ns": 24809,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "canvas_to_rgba_staging_copy",
+        "size": "640x360",
+        "iterations": 219,
+        "before_average_ns": 46260,
+        "after_average_ns": 36312,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "canvas_clear",
+        "size": "1280x720",
+        "iterations": 55,
+        "before_average_ns": 126268,
+        "after_average_ns": 133192,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "canvas_to_rgba_staging_copy",
+        "size": "1280x720",
+        "iterations": 55,
+        "before_average_ns": 349426,
+        "after_average_ns": 244904,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "canvas_clear",
+        "size": "1920x1080",
+        "iterations": 25,
+        "before_average_ns": 427539,
+        "after_average_ns": 397169,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "canvas_to_rgba_staging_copy",
+        "size": "1920x1080",
+        "iterations": 25,
+        "before_average_ns": 727975,
+        "after_average_ns": 755949,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "filled_rectangles_small",
+        "size": "160x90",
+        "iterations": 2622,
+        "before_average_ns": 6840,
+        "after_average_ns": 6946,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "filled_rectangles_small",
+        "size": "160x90",
+        "iterations": 263,
+        "before_average_ns": 70539,
+        "after_average_ns": 68060,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "filled_rectangles_large",
+        "size": "160x90",
+        "iterations": 140,
+        "before_average_ns": 27752,
+        "after_average_ns": 23737,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "lines",
+        "size": "160x90",
+        "iterations": 3146,
+        "before_average_ns": 72393,
+        "after_average_ns": 71891,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "filled_circles",
+        "size": "160x90",
+        "iterations": 1742,
+        "before_average_ns": 41124,
+        "after_average_ns": 38503,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "sprites_opaque",
+        "size": "160x90",
+        "iterations": 1967,
+        "before_average_ns": 48443,
+        "after_average_ns": 49163,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "sprites_opaque",
+        "size": "160x90",
+        "iterations": 197,
+        "before_average_ns": 468001,
+        "after_average_ns": 476757,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "sprites_opaque",
+        "size": "160x90",
+        "iterations": 40,
+        "before_average_ns": 2379762,
+        "after_average_ns": 2384676,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "sprites_alpha",
+        "size": "160x90",
+        "iterations": 197,
+        "before_average_ns": 1676814,
+        "after_average_ns": 1764537,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "sprites_alpha_partially_clipped",
+        "size": "160x90",
+        "iterations": 197,
+        "before_average_ns": 903517,
+        "after_average_ns": 930654,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "sprites_opaque_offscreen",
+        "size": "160x90",
+        "iterations": 197,
+        "before_average_ns": 4760,
+        "after_average_ns": 4402,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "atlas_sprites_tinted",
+        "size": "160x90",
+        "iterations": 197,
+        "before_average_ns": 3098738,
+        "after_average_ns": 2993533,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "builtin_text_hud",
+        "size": "160x90",
+        "iterations": 8192,
+        "before_average_ns": 1515,
+        "after_average_ns": 1317,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "builtin_text_heavy",
+        "size": "160x90",
+        "iterations": 1798,
+        "before_average_ns": 34022,
+        "after_average_ns": 27933,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "authored_text_hud",
+        "size": "160x90",
+        "iterations": 8192,
+        "before_average_ns": 26049,
+        "after_average_ns": 27209,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "authored_text_heavy",
+        "size": "160x90",
+        "iterations": 2517,
+        "before_average_ns": 510174,
+        "after_average_ns": 568509,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "filled_rectangles_small",
+        "size": "320x180",
+        "iterations": 2622,
+        "before_average_ns": 6714,
+        "after_average_ns": 6555,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "filled_rectangles_small",
+        "size": "320x180",
+        "iterations": 263,
+        "before_average_ns": 67323,
+        "after_average_ns": 67371,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "filled_rectangles_large",
+        "size": "320x180",
+        "iterations": 35,
+        "before_average_ns": 78670,
+        "after_average_ns": 79126,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "lines",
+        "size": "320x180",
+        "iterations": 1573,
+        "before_average_ns": 122678,
+        "after_average_ns": 124709,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "filled_circles",
+        "size": "320x180",
+        "iterations": 1742,
+        "before_average_ns": 37283,
+        "after_average_ns": 38598,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "sprites_opaque",
+        "size": "320x180",
+        "iterations": 1967,
+        "before_average_ns": 50388,
+        "after_average_ns": 51173,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "sprites_opaque",
+        "size": "320x180",
+        "iterations": 197,
+        "before_average_ns": 496287,
+        "after_average_ns": 538622,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "sprites_opaque",
+        "size": "320x180",
+        "iterations": 40,
+        "before_average_ns": 2526099,
+        "after_average_ns": 2511230,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "sprites_alpha",
+        "size": "320x180",
+        "iterations": 197,
+        "before_average_ns": 1813588,
+        "after_average_ns": 1878167,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "sprites_alpha_partially_clipped",
+        "size": "320x180",
+        "iterations": 197,
+        "before_average_ns": 915357,
+        "after_average_ns": 943898,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "sprites_opaque_offscreen",
+        "size": "320x180",
+        "iterations": 197,
+        "before_average_ns": 5285,
+        "after_average_ns": 5610,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "atlas_sprites_tinted",
+        "size": "320x180",
+        "iterations": 197,
+        "before_average_ns": 2921379,
+        "after_average_ns": 3016755,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "builtin_text_hud",
+        "size": "320x180",
+        "iterations": 8192,
+        "before_average_ns": 1456,
+        "after_average_ns": 1329,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "builtin_text_heavy",
+        "size": "320x180",
+        "iterations": 1798,
+        "before_average_ns": 26312,
+        "after_average_ns": 28204,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "authored_text_hud",
+        "size": "320x180",
+        "iterations": 8192,
+        "before_average_ns": 29555,
+        "after_average_ns": 30536,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "authored_text_heavy",
+        "size": "320x180",
+        "iterations": 2517,
+        "before_average_ns": 560272,
+        "after_average_ns": 579364,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "filled_rectangles_small",
+        "size": "640x360",
+        "iterations": 2622,
+        "before_average_ns": 6808,
+        "after_average_ns": 7333,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "filled_rectangles_small",
+        "size": "640x360",
+        "iterations": 263,
+        "before_average_ns": 68776,
+        "after_average_ns": 74587,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "filled_rectangles_large",
+        "size": "640x360",
+        "iterations": 9,
+        "before_average_ns": 474012,
+        "after_average_ns": 482962,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "lines",
+        "size": "640x360",
+        "iterations": 787,
+        "before_average_ns": 238049,
+        "after_average_ns": 253695,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "filled_circles",
+        "size": "640x360",
+        "iterations": 1742,
+        "before_average_ns": 37469,
+        "after_average_ns": 39974,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "sprites_opaque",
+        "size": "640x360",
+        "iterations": 1967,
+        "before_average_ns": 51469,
+        "after_average_ns": 56154,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "sprites_opaque",
+        "size": "640x360",
+        "iterations": 197,
+        "before_average_ns": 515088,
+        "after_average_ns": 533136,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "sprites_opaque",
+        "size": "640x360",
+        "iterations": 40,
+        "before_average_ns": 2542823,
+        "after_average_ns": 2759443,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "sprites_alpha",
+        "size": "640x360",
+        "iterations": 197,
+        "before_average_ns": 1964631,
+        "after_average_ns": 2128367,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "sprites_alpha_partially_clipped",
+        "size": "640x360",
+        "iterations": 197,
+        "before_average_ns": 1044463,
+        "after_average_ns": 1015521,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "sprites_opaque_offscreen",
+        "size": "640x360",
+        "iterations": 197,
+        "before_average_ns": 4529,
+        "after_average_ns": 4840,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "atlas_sprites_tinted",
+        "size": "640x360",
+        "iterations": 197,
+        "before_average_ns": 2990844,
+        "after_average_ns": 3186441,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "builtin_text_hud",
+        "size": "640x360",
+        "iterations": 8192,
+        "before_average_ns": 1360,
+        "after_average_ns": 1373,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "builtin_text_heavy",
+        "size": "640x360",
+        "iterations": 1798,
+        "before_average_ns": 26781,
+        "after_average_ns": 26744,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "authored_text_hud",
+        "size": "640x360",
+        "iterations": 8192,
+        "before_average_ns": 30325,
+        "after_average_ns": 32997,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "authored_text_heavy",
+        "size": "640x360",
+        "iterations": 2517,
+        "before_average_ns": 731200,
+        "after_average_ns": 635701,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "filled_rectangles_small",
+        "size": "1280x720",
+        "iterations": 2622,
+        "before_average_ns": 9596,
+        "after_average_ns": 7187,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "filled_rectangles_small",
+        "size": "1280x720",
+        "iterations": 263,
+        "before_average_ns": 98914,
+        "after_average_ns": 70599,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "filled_rectangles_large",
+        "size": "1280x720",
+        "iterations": 8,
+        "before_average_ns": 2714373,
+        "after_average_ns": 2167957,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "lines",
+        "size": "1280x720",
+        "iterations": 394,
+        "before_average_ns": 554183,
+        "after_average_ns": 503454,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "filled_circles",
+        "size": "1280x720",
+        "iterations": 1742,
+        "before_average_ns": 45628,
+        "after_average_ns": 40386,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "sprites_opaque",
+        "size": "1280x720",
+        "iterations": 1967,
+        "before_average_ns": 64696,
+        "after_average_ns": 57293,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "sprites_opaque",
+        "size": "1280x720",
+        "iterations": 197,
+        "before_average_ns": 616945,
+        "after_average_ns": 539458,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "sprites_opaque",
+        "size": "1280x720",
+        "iterations": 40,
+        "before_average_ns": 2773299,
+        "after_average_ns": 2757968,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "sprites_alpha",
+        "size": "1280x720",
+        "iterations": 197,
+        "before_average_ns": 2528758,
+        "after_average_ns": 2375488,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "sprites_alpha_partially_clipped",
+        "size": "1280x720",
+        "iterations": 197,
+        "before_average_ns": 986383,
+        "after_average_ns": 1024200,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "sprites_opaque_offscreen",
+        "size": "1280x720",
+        "iterations": 197,
+        "before_average_ns": 5294,
+        "after_average_ns": 4399,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "atlas_sprites_tinted",
+        "size": "1280x720",
+        "iterations": 197,
+        "before_average_ns": 3192206,
+        "after_average_ns": 3161647,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "builtin_text_hud",
+        "size": "1280x720",
+        "iterations": 8192,
+        "before_average_ns": 1345,
+        "after_average_ns": 1528,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "builtin_text_heavy",
+        "size": "1280x720",
+        "iterations": 1798,
+        "before_average_ns": 47454,
+        "after_average_ns": 26505,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "authored_text_hud",
+        "size": "1280x720",
+        "iterations": 8192,
+        "before_average_ns": 30742,
+        "after_average_ns": 31174,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "authored_text_heavy",
+        "size": "1280x720",
+        "iterations": 2517,
+        "before_average_ns": 628851,
+        "after_average_ns": 651133,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "filled_rectangles_small",
+        "size": "1920x1080",
+        "iterations": 2622,
+        "before_average_ns": 6562,
+        "after_average_ns": 6835,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "filled_rectangles_small",
+        "size": "1920x1080",
+        "iterations": 263,
+        "before_average_ns": 72473,
+        "after_average_ns": 80149,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "filled_rectangles_large",
+        "size": "1920x1080",
+        "iterations": 8,
+        "before_average_ns": 4624258,
+        "after_average_ns": 5085612,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "lines",
+        "size": "1920x1080",
+        "iterations": 263,
+        "before_average_ns": 679984,
+        "after_average_ns": 720053,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "filled_circles",
+        "size": "1920x1080",
+        "iterations": 1742,
+        "before_average_ns": 37673,
+        "after_average_ns": 39810,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "sprites_opaque",
+        "size": "1920x1080",
+        "iterations": 1967,
+        "before_average_ns": 52692,
+        "after_average_ns": 55383,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "sprites_opaque",
+        "size": "1920x1080",
+        "iterations": 197,
+        "before_average_ns": 525535,
+        "after_average_ns": 617810,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "sprites_opaque",
+        "size": "1920x1080",
+        "iterations": 40,
+        "before_average_ns": 2586830,
+        "after_average_ns": 3039525,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "sprites_alpha",
+        "size": "1920x1080",
+        "iterations": 197,
+        "before_average_ns": 2230014,
+        "after_average_ns": 2496625,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "sprites_alpha_partially_clipped",
+        "size": "1920x1080",
+        "iterations": 197,
+        "before_average_ns": 938600,
+        "after_average_ns": 1047968,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "sprites_opaque_offscreen",
+        "size": "1920x1080",
+        "iterations": 197,
+        "before_average_ns": 4345,
+        "after_average_ns": 4656,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "atlas_sprites_tinted",
+        "size": "1920x1080",
+        "iterations": 197,
+        "before_average_ns": 3052516,
+        "after_average_ns": 3327765,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "builtin_text_hud",
+        "size": "1920x1080",
+        "iterations": 8192,
+        "before_average_ns": 1249,
+        "after_average_ns": 1327,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "builtin_text_heavy",
+        "size": "1920x1080",
+        "iterations": 1798,
+        "before_average_ns": 26896,
+        "after_average_ns": 27065,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "authored_text_hud",
+        "size": "1920x1080",
+        "iterations": 8192,
+        "before_average_ns": 29305,
+        "after_average_ns": 31300,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "authored_text_heavy",
+        "size": "1920x1080",
+        "iterations": 2517,
+        "before_average_ns": 637833,
+        "after_average_ns": 724827,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "surface_1to1_nearest",
+        "size": "320x180",
+        "iterations": 874,
+        "before_average_ns": 193275,
+        "after_average_ns": 137926,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "surface_160x90_to_1280x720_nearest",
+        "size": "1280x720",
+        "iterations": 55,
+        "before_average_ns": 1820343,
+        "after_average_ns": 2238507,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "surface_320x180_to_1280x720_nearest",
+        "size": "1280x720",
+        "iterations": 55,
+        "before_average_ns": 2177835,
+        "after_average_ns": 2424745,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "surface_160x90_to_1280x720_linear",
+        "size": "1280x720",
+        "iterations": 55,
+        "before_average_ns": 21850742,
+        "after_average_ns": 7293790,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "surface_320x180_to_1280x720_linear",
+        "size": "1280x720",
+        "iterations": 55,
+        "before_average_ns": 21758232,
+        "after_average_ns": 7666464,
+        "allocations": 0,
+        "allocated_bytes": 0
+      },
+      {
+        "name": "surface_world_minimap_ui",
+        "size": "1280x720",
+        "iterations": 50,
+        "before_average_ns": 2510589,
+        "after_average_ns": 2771157,
+        "allocations": 0,
+        "allocated_bytes": 0
+      }
+    ],
+    "interpretation": "Single serial runs; not paired distributions. Primary comparison is the focused seven-pair experiment."
+  },
+  "raw_artifacts": {
+    "before.jsonl": "0269183eab12585c45d311ae69b3475e2b06d82a4aecc279c0520d16eff2250f",
+    "after.jsonl": "c7e544abcb77f23c478ff23864161c582bef763e25264fc69e49113151608882",
+    "paired.jsonl": "dd7b70083b9191b4166c77fba81fd4b978ea5b1bdc4a35568c062d260392992f",
+    "before-sample.txt": "0ce1c0b7e7b9e3f603e000b153e19026891904985b4a36388b695b0c8543ad34",
+    "original-full-1.txt": "6677428e32e66d1d16a28804b761aef0b0bf22ec57448517cc6aef2ef501b936",
+    "optimized-full-1.txt": "2e90045b34a302c986a8888bc30f56663e1403d8680929564515a2875ba815bb",
+    "before-build.log": "79e85df5b14ee1d3945d8b4ed4a6e316ae02ab3b5f0b7d4796635de9a8419723",
+    "after-build.log": "ce7f2781263c4b79a863effa311d8e7f5f00d13122e2dd9cc2006eb4e86bd558",
+    "original-build.log": "1f9d8f79ff9ab9b2bafae34cd0b0128922fd45cbfd51be5fe6d09e11140b8f0e",
+    "optimized-full-build.log": "21a7caa90b322587d1972c557a2956882be83f0171ccecdba8262df02d8e68b2"
+  },
+  "validation": {
+    "native_wasm_pixel_trace_cases": 554,
+    "pixel_trace_hash": "716431564172485137",
+    "native_modes": [
+      "Debug",
+      "ReleaseFast"
+    ],
+    "wasm_root_mode": "ReleaseFast",
+    "wasm_core_mode": "ReleaseSmall",
+    "real_browser": {
+      "status": "peas-surface-composition-passed",
+      "cases": 554,
+      "hash": "716431564172485137",
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36",
+      "platform": "MacIntel"
+    },
+    "node": "24.19.0",
+    "python": "3.14.7",
+    "broad_build_steps": 94,
+    "broad_tests": 397,
+    "native_examples_build_steps": 46,
+    "native_examples_tests": 63,
+    "readme_changed": false,
+    "api_or_existing_golden_changed": false
+  },
+  "compiler_commands": {
+    "before": "<zig-0.15.2>/zig build-exe -OReleaseFast --dep unpolished-peas -Mroot=<repo>/src/surface_composition_benchmark.zig -cflags -std=c99 -- <repo>/src/vendor/stb_image.c -cflags -std=c99 -- <repo>/src/vendor/stb_truetype.c -cflags -std=c99 -DSTB_VORBIS_NO_STDIO -- <repo>/vendor/stb/stb_vorbis.c -OReleaseFast -I <repo>/vendor/stb -Munpolished-peas=<repo>/src/unpolished_peas.zig -lc --cache-dir .zig-cache --global-cache-dir <global-zig-cache> --name surface-composition-benchmark --zig-lib-dir <zig-0.15.2>/lib/ --listen=-",
+    "after": "<zig-0.15.2>/zig build-exe -OReleaseFast --dep unpolished-peas -Mroot=<repo>/src/surface_composition_benchmark.zig -cflags -std=c99 -- <repo>/src/vendor/stb_image.c -cflags -std=c99 -- <repo>/src/vendor/stb_truetype.c -cflags -std=c99 -DSTB_VORBIS_NO_STDIO -- <repo>/vendor/stb/stb_vorbis.c -OReleaseFast -I <repo>/vendor/stb -Munpolished-peas=<repo>/src/unpolished_peas.zig -lc --cache-dir .zig-cache --global-cache-dir <global-zig-cache> --name surface-composition-benchmark --zig-lib-dir <zig-0.15.2>/lib/ --listen=-"
+  }
+}

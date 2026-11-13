@@ -1,0 +1,17 @@
+.{
+    .name = .external_sprite_audio_input,
+    .version = "0.0.1",
+    .fingerprint = 0xca82f44c853d42c,
+    .minimum_zig_version = "0.15.2",
+    .dependencies = .{
+        .unpolished_peas = .{
+            .path = "../..",
+        },
+    },
+    .paths = .{
+        "assets",
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}

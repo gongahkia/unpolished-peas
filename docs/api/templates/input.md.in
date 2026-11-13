@@ -1,0 +1,60 @@
+# Input, actions and Unicode text
+
+[Task index](core.md) · [GameContext](lifecycle.md#core-GameContext) · [Replay](testing.md)
+
+Read ctx.input during fixed update. Use held state for movement and pressed/
+released edges for one-shot actions. Normalized Key has ten defaults; use
+Input.PhysicalKey for distinct Q/E/1/2 controls. Input setters are host/test
+builders; an ordinary game reads the host's snapshot instead of polling SDL
+or DOM directly. Snapshot/extension storage is inline; copying it owns the
+copy, while event/text slices borrow the current input storage.
+
+In ActionMap signatures, `Map` means [`up.input.ActionMap`](#input-ActionMap),
+`Binding` means [`up.input.ActionBinding`](#input-ActionBinding), and
+`input.Input` means [`up.input.Input`](#input-Input). In extension signatures,
+`State` means `up.input.Input.Extended` and `Event` means
+`up.input.Input.InputEvent`; both are nested public aliases shown below.
+
+## Rebinding recipe
+
+ActionMap.init owns its action/cache allocations and needs deinit. It copies
+definitions but borrows their name/context strings; keep those strings alive.
+The borrowed `ActionMap{ .actions = &definitions }` form supports value
+queries but rejects mutation with `ImmutableActionMap`. Owned maps update
+their cached edges once each fixed tick, after rebinding.
+
+<!-- example: examples/api_reference_recipes.zig | rebind -->
+
+The sample supplies a test key observation. In a game replace that observation
+with `actions.update(ctx.input.*)`. Rebinding unknown actions/bindings is an
+error. In-memory rebinding is portable; native save/load/attachAppData helpers
+need a filesystem. Browser games should save chosen bindings as game-owned
+bytes through [SaveStore](audio-save.md#core-SaveStore).
+
+## Text and composition
+
+Request `try ctx.setTextInput(true)` when a name field opens and false when
+it closes. This requests host activation; it does not fabricate input.
+`ctx.input.extended.active` reports observed activation. Consume ordered
+`eventSlice()` events and use `eventText(event)` for their UTF-8 bytes. Copy
+commits into game-owned storage; render composition_update preedit separately.
+The [minimal game](lifecycle.md) shows bounded commit copying; the
+[compiled input workbench](../../examples/input_workbench_game.zig) also handles
+preedit, rebinding and backspace.
+
+Events/text are bounded to 32 events and 1024 text bytes per snapshot. Overflow
+is observable through extended.overflow; do not assume arbitrary pastes fit.
+Headless builders can report `InputOverflow`, `InvalidUtf8` or
+`TextInputInactive`; context activation can report `TextInputUnavailable`.
+Edges/events occur once on the first consuming update; clear transients before
+supplying another catch-up tick yourself. The [input guide](../guides/input.md)
+and [compatibility contract](../guides/input-v2-compatibility.md) define IME,
+selection units, focus loss, buffering and UPR5 encoding.
+
+<!-- api: input.Input -->
+<!-- api: input.Key -->
+<!-- api: input.Pointer -->
+<!-- api: input.Gamepad -->
+<!-- api: input.Action -->
+<!-- api: input.ActionBinding -->
+<!-- api: input.ActionMap -->

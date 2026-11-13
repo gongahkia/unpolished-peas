@@ -1,0 +1,17 @@
+.{
+    .name = .external_animation_gameplay,
+    .version = "0.0.1",
+    .fingerprint = 0x2af04b40817250fe,
+    .minimum_zig_version = "0.15.2",
+    .dependencies = .{
+        .unpolished_peas = .{
+            .path = "../..",
+        },
+    },
+    .paths = .{
+        "assets",
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}

@@ -1,0 +1,43 @@
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+struct SurfaceParameters
+{
+    int4 destination;
+    uint4 sampling;
+};
+
+struct main0_out
+{
+    float4 out_color [[color(0)]];
+};
+
+struct main0_in
+{
+    float2 in_uv [[user(locn0)]];
+    float4 in_tint [[user(locn1)]];
+};
+
+fragment main0_out main0(main0_in in [[stage_in]], constant SurfaceParameters& _12 [[buffer(0)]], texture2d<float> sprite_texture [[texture(0)]], sampler sprite_textureSmplr [[sampler(0)]], float4 gl_FragCoord [[position]])
+{
+    main0_out out = {};
+    float4 sample_color;
+    if (_12.sampling.x == 0u)
+    {
+        int2 relative = int2(gl_FragCoord.xy) - _12.destination.xy;
+        int2 size = int2(sprite_texture.get_width(), sprite_texture.get_height());
+        int2 coordinate = (relative * size) / _12.destination.zw;
+        sample_color = sprite_texture.read(uint2(clamp(coordinate, int2(0), size - int2(1))), 0);
+    }
+    else
+    {
+        sample_color = sprite_texture.sample(sprite_textureSmplr, in.in_uv);
+    }
+    uint4 source = uint4(floor((fast::clamp(sample_color, float4(0.0), float4(1.0)) * 255.0) + float4(0.5)));
+    uint4 tint = uint4(floor((fast::clamp(in.in_tint, float4(0.0), float4(1.0)) * 255.0) + float4(0.5)));
+    out.out_color = float4((source * tint) / uint4(255u)) / float4(255.0);
+    return out;
+}
+
