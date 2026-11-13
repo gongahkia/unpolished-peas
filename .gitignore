@@ -1,8 +1,6 @@
-.zig-cache/
-.zig-global-cache/
-zig-out/
-.tools/
-.playwright-cli/
-script/browser-authoring/node_modules/
-.codex
+/build/
+/dist/
+*.test
+coverage.out
+.DS_Store
 AGENTS.md

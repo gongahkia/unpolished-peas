@@ -1,8 +1,0 @@
-{
-  "name": "peas-browser-authoring-checks",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "playwright": "1.65.0-alpha-2026-10-30"
-  }
-}
